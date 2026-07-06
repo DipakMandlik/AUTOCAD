@@ -263,7 +263,10 @@ function setupSymbols() {
   });
 }
 
-// --- Execution log ---------------------------------------------------
+// --- Execution log + Performance ---------------------------------------
+// Both panels read from the same server-side execution log, so a single
+// refreshLogs() call (invoked from every action path below) keeps both
+// up to date — no separate wiring needed per panel.
 
 function renderLogEntries(entries) {
   const container = document.getElementById("execution-log");
@@ -277,6 +280,38 @@ function renderLogEntries(entries) {
   }
 }
 
+function renderPerformanceTable(result) {
+  const container = document.getElementById("performance-table");
+  if (!result.tools.length) {
+    container.innerHTML = '<p class="hint">No tool calls recorded yet.</p>';
+    return;
+  }
+  const rows = result.tools
+    .map(
+      (t) => `<tr>
+        <td>${t.tool}</td><td>${t.calls}</td><td>${t.successes}</td><td>${t.failures}</td>
+        <td>${t.avg_duration_ms}</td><td>${t.min_duration_ms}</td><td>${t.max_duration_ms}</td>
+      </tr>`
+    )
+    .join("");
+  const overallRate =
+    result.overall_success_rate === null ? "—" : `${Math.round(result.overall_success_rate * 100)}%`;
+  container.innerHTML = `
+    <p class="hint">${result.total_calls} total call(s), ${overallRate} overall success rate.</p>
+    <table class="perf-table">
+      <thead><tr><th>Tool</th><th>Calls</th><th>OK</th><th>Fail</th><th>Avg ms</th><th>Min ms</th><th>Max ms</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function refreshPerformance() {
+  try {
+    renderPerformanceTable(await api("/performance"));
+  } catch {
+    // diagnostic only — fail silently, same as refreshLogs()
+  }
+}
+
 async function refreshLogs() {
   try {
     const result = await api("/logs?limit=100");
@@ -284,6 +319,7 @@ async function refreshLogs() {
   } catch {
     // logs are diagnostic, not on the critical path — fail silently
   }
+  refreshPerformance();
 }
 
 function setupLogs() {

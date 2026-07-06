@@ -341,3 +341,13 @@ def test_clear_logs_via_rest(client):
     response = client.post("/logs/clear")
     assert response.status_code == 200
     assert response.json()["success"] is True
+
+
+def test_get_performance_via_rest(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    response = client.get("/performance")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    tools_seen = [t["tool"] for t in body["tools"]]
+    assert "draw_circle" in tools_seen

@@ -548,6 +548,39 @@ the other two documented plugin-loading-order caveats (Phase 9's
 `ValidationEngine` rule-snapshot timing, and plugin backends not being
 selectable as the default session backend).
 
+## Phase 13: Performance (dashboard "Performance" section)
+
+A direct extension of Phase 12 rather than new infrastructure: the
+execution log already records a duration and success flag for every call,
+so a "Performance" dashboard section is a pure aggregation over data that
+already exists, with zero new state to manage.
+
+- **`ExecutionLog.stats()`**: groups the log's current entries by tool
+  name and computes call count, success/failure counts, and avg/min/max
+  `duration_ms` per tool, sorted by call count descending (most-called
+  first — the natural "what's hot" read order). Returns `ToolStats`
+  dataclass instances, mirroring `ExecutionLogEntry`'s style.
+- **Same bounded-window caveat as `recent()`**: `stats()` aggregates
+  whatever is currently in the `deque(maxlen=500)`, not a true cumulative
+  historical metric — once eviction starts dropping old entries, a tool
+  that was called many times early in a long session will show a lower
+  count than it actually accumulated. This is stated plainly rather than
+  quietly presented as a real metrics store (no Prometheus-style counters,
+  no persistence, no export format).
+- **`get_performance_stats` tool + `GET /performance`**: returns per-tool
+  stats plus `total_calls`/`overall_success_rate` across all tools. Added
+  to `TOOL_REGISTRY` before the Phase 12 logging-wrap loop runs, so its
+  own calls are logged too, same as `get_execution_log`.
+- **Dashboard "Performance" panel**: a table (tool, calls, OK, fail, avg/
+  min/max ms) plus a one-line summary. Rather than wiring a third refresh
+  call through every action path, `refreshLogs()` itself now also calls
+  `refreshPerformance()` — both panels read from the same underlying log,
+  so one refresh trigger keeps both current with no per-panel plumbing.
+  Verified live via Playwright: a mix of successful `process_command`
+  calls and one deliberately invalid `draw_circle` produced a table with
+  correct per-tool counts (`draw_circle` showing 0 successes / 1 failure)
+  and a correct overall success rate.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -555,8 +588,10 @@ placeholder directories were created for them (an empty `dashboard`
 section folder communicates nothing and just adds noise):
 
 - Dashboard sections that need richer UI/backend support: Templates,
-  Execution Queue, Performance, Settings (Logs now exists — Phase 12 —
-  though it's a flat recent-calls list, not a queryable/filterable one)
+  Execution Queue, Settings (Logs and Performance now exist — Phases 12
+  and 13 — though Logs is a flat recent-calls list rather than a
+  queryable/filterable one, and Performance aggregates only the same
+  bounded in-memory window, not a true cumulative historical metric)
 - Multi-format import beyond SVG: PDF, raster image, hand sketch,
   Excel/CSV, flowcharts — these need OCR/ML or heavyweight parsing this
   sandbox can't install or verify (Phase 11 covers plain, unstyled,

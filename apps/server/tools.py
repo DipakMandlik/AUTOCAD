@@ -423,6 +423,29 @@ def _handle_clear_execution_log(arguments: Dict[str, Any], ctx: ServerContext) -
     return {"success": True, "message": f"cleared {count} log entr{'y' if count == 1 else 'ies'}"}
 
 
+def _handle_get_performance_stats(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    stats = ctx.execution_log.stats()
+    total_calls = sum(s.calls for s in stats)
+    total_successes = sum(s.successes for s in stats)
+    return {
+        "success": True,
+        "tools": [
+            {
+                "tool": s.tool,
+                "calls": s.calls,
+                "successes": s.successes,
+                "failures": s.failures,
+                "avg_duration_ms": round(s.avg_duration_ms, 2),
+                "min_duration_ms": round(s.min_duration_ms, 2),
+                "max_duration_ms": round(s.max_duration_ms, 2),
+            }
+            for s in stats
+        ],
+        "total_calls": total_calls,
+        "overall_success_rate": round(total_successes / total_calls, 4) if total_calls else None,
+    }
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -757,6 +780,13 @@ TOOL_REGISTRY: List[ToolSpec] = [
         "Clear the tool-call execution log",
         {"type": "object", "properties": {}},
         _handle_clear_execution_log,
+    ),
+    ToolSpec(
+        "get_performance_stats",
+        "Per-tool call counts, success rate, and duration stats aggregated from the execution log "
+        "(same bounded window as get_execution_log, not a persisted historical metric)",
+        {"type": "object", "properties": {}},
+        _handle_get_performance_stats,
     ),
 ]
 

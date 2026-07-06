@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 227 tests, all run headlessly against the DXF backend
+pytest -v      # 234 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -89,8 +89,10 @@ uvicorn apps.api.main:app --reload
 Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
 tool explorer with live schemas, an SVG drawing preview with an
 accurate-render toggle, .scr/.lsp download buttons, a validate-only
-dry-run panel, a Projects panel for saving/loading drawings, and a Logs
-panel showing every tool call this session), or use the API directly:
+dry-run panel, a Projects panel for saving/loading drawings, a Logs panel
+showing every tool call this session, and a Performance panel aggregating
+per-tool call counts/timing from those same logs), or use the API
+directly:
 
 - `GET /health` — status + which backend is active
 - `GET /tools` — list every tool's name/description/JSON schema
@@ -109,6 +111,7 @@ panel showing every tool call this session), or use the API directly:
 - `GET /symbols/{name}/preview?format=svg|png` — render a symbol in isolation, for the dashboard's symbol grid
 - `GET /logs?limit=N` — recent tool calls (successful or not), most-recent-last
 - `POST /logs/clear` — clear the execution log
+- `GET /performance` — per-tool call counts/success rate/duration stats, aggregated from the same log
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -157,7 +160,8 @@ Configure via an optional `config.json` in the working directory, or
 `get_current_drawing`, `clear_current_drawing`, `render_current_drawing`,
 `export_script`, `export_lisp`, `create_project`, `list_projects`,
 `get_project`, `snapshot_project`, `load_project`, `list_symbols`,
-`insert_symbol`, `import_svg`, `get_execution_log`, `clear_execution_log`.
+`insert_symbol`, `import_svg`, `get_execution_log`, `clear_execution_log`,
+`get_performance_stats`.
 
 Every one of these is recorded in the execution log the moment it
 returns (tool name, success/failure, message, duration) — including
@@ -167,6 +171,13 @@ Phase 12), so it covers both transports and every REST "sugar" route
 automatically. One real gap: tools contributed by a plugin (see
 "Plugins" above) are registered *after* that wrapping runs, so plugin
 tool calls are not currently logged.
+
+`get_performance_stats` aggregates that same log into per-tool call
+counts, success/failure counts, and avg/min/max duration — a pure
+computation over existing data, not a separate metrics store. It reflects
+only whatever is currently in the log's bounded window (see
+`docs/architecture.md` Phase 13), so it's not a true cumulative
+historical metric once older entries get evicted.
 
 `import_svg` accepts a raw SVG document and converts a constrained element
 subset (`line`/`circle`/`ellipse`/`rect`/`polyline`/`polygon`/`text`, and
@@ -209,7 +220,7 @@ Briefly:
 - `examples/plugins/` — a complete, runnable example plugin
 - `symbols/` — the built-in engineering symbol library (electrical/piping/architectural), `insert_symbol`/`list_symbols` tools sit on top
 - `imports/` — `svg_import.py`, a constrained SVG-to-`DrawingPlan` parser; the `import_svg` tool sits on top
-- `apps/execution_log.py` — bounded, in-memory tool-call audit trail backing the dashboard's Logs panel and `get_execution_log`/`clear_execution_log`
+- `apps/execution_log.py` — bounded, in-memory tool-call audit trail backing the dashboard's Logs panel (`get_execution_log`/`clear_execution_log`) and Performance panel (`get_performance_stats`)
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
@@ -227,10 +238,12 @@ this pass attempted.
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
 for why): dashboard sections that need richer UI/backend support
-(Templates, Execution Queue, Performance, Settings — Logs now exists,
-see "Available tools"/"REST" above, though it's a flat recent-calls list
-rather than a queryable/filterable one, and doesn't yet cover
-plugin-contributed tool calls); multi-format
+(Templates, Execution Queue, Settings — Logs and Performance now exist,
+see "Available tools"/"REST" above, though Logs is a flat recent-calls
+list rather than a queryable/filterable one, Performance aggregates only
+the same bounded in-memory window rather than being a true cumulative
+historical metric, and neither covers plugin-contributed tool calls);
+multi-format
 import beyond SVG (PDF/image/sketch/Excel — these need OCR/ML or
 heavyweight parsing this sandbox can't install or verify; `import_svg`,
 see "Available tools" above, covers plain, unstyled, ungrouped SVG only —

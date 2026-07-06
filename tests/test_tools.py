@@ -30,7 +30,7 @@ def test_registry_has_expected_tools():
         "export_script", "export_lisp",
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
         "list_symbols", "insert_symbol", "import_svg",
-        "get_execution_log", "clear_execution_log",
+        "get_execution_log", "clear_execution_log", "get_performance_stats",
     }
 
 
@@ -376,3 +376,24 @@ def test_clear_execution_log_tool(ctx):
     remaining = ctx.execution_log.recent()
     assert len(remaining) == 1
     assert remaining[0].tool == "clear_execution_log"
+
+
+def test_get_performance_stats_tool(ctx):
+    TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": 5}, ctx)
+    TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": -5}, ctx)
+    result = TOOLS_BY_NAME["get_performance_stats"].handler({}, ctx)
+    assert result["success"] is True
+    circle_stats = next(t for t in result["tools"] if t["tool"] == "draw_circle")
+    assert circle_stats["calls"] == 2
+    assert circle_stats["successes"] == 1
+    assert circle_stats["failures"] == 1
+    assert result["total_calls"] >= 2
+    assert 0.0 <= result["overall_success_rate"] <= 1.0
+
+
+def test_get_performance_stats_empty_log(ctx):
+    result = TOOLS_BY_NAME["get_performance_stats"].handler({}, ctx)
+    assert result["success"] is True
+    assert result["tools"] == []
+    assert result["total_calls"] == 0
+    assert result["overall_success_rate"] is None

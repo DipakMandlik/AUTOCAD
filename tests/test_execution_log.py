@@ -52,3 +52,50 @@ def test_timestamp_is_iso_format_string():
     entry = log.recent()[0]
     assert isinstance(entry.timestamp, str)
     assert "T" in entry.timestamp
+
+
+def test_stats_empty_log_returns_empty_list():
+    assert ExecutionLog().stats() == []
+
+
+def test_stats_aggregates_per_tool():
+    log = ExecutionLog()
+    log.record("draw_circle", True, "drawn", 1.0)
+    log.record("draw_circle", True, "drawn", 3.0)
+    log.record("draw_circle", False, "failed", 2.0)
+    log.record("draw_line", True, "drawn", 5.0)
+
+    by_tool = {s.tool: s for s in log.stats()}
+
+    circle = by_tool["draw_circle"]
+    assert circle.calls == 3
+    assert circle.successes == 2
+    assert circle.failures == 1
+    assert circle.avg_duration_ms == 2.0
+    assert circle.min_duration_ms == 1.0
+    assert circle.max_duration_ms == 3.0
+
+    line = by_tool["draw_line"]
+    assert line.calls == 1
+    assert line.successes == 1
+    assert line.failures == 0
+    assert line.avg_duration_ms == 5.0
+
+
+def test_stats_sorted_by_call_count_descending():
+    log = ExecutionLog()
+    log.record("rare_tool", True, None, 1.0)
+    for _ in range(3):
+        log.record("common_tool", True, None, 1.0)
+    stats = log.stats()
+    assert [s.tool for s in stats] == ["common_tool", "rare_tool"]
+
+
+def test_stats_reflects_capacity_eviction():
+    log = ExecutionLog(capacity=2)
+    log.record("draw_circle", True, None, 1.0)
+    log.record("draw_circle", True, None, 1.0)
+    log.record("draw_line", True, None, 1.0)  # evicts the first draw_circle entry
+    by_tool = {s.tool: s for s in log.stats()}
+    assert by_tool["draw_circle"].calls == 1
+    assert by_tool["draw_line"].calls == 1

@@ -201,6 +201,10 @@ def create_app(ctx: ServerContext) -> FastAPI:
     def clear_logs() -> Dict[str, Any]:
         return TOOLS_BY_NAME["clear_execution_log"].handler({}, ctx)
 
+    @app.get("/performance")
+    def get_performance() -> Dict[str, Any]:
+        return TOOLS_BY_NAME["get_performance_stats"].handler({}, ctx)
+
     if DASHBOARD_STATIC_DIR.is_dir():
         app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")
 

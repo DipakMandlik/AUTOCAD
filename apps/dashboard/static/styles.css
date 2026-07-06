@@ -131,6 +131,19 @@ button.secondary { background: transparent; border: 1px solid var(--border); col
 .log-controls { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
 .log-controls button { flex: 1; }
 
+.perf-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-size: 0.72rem;
+}
+.perf-table th, .perf-table td {
+  text-align: right;
+  padding: 0.3rem 0.4rem;
+  border-top: 1px solid var(--border);
+}
+.perf-table th:first-child, .perf-table td:first-child { text-align: left; }
+
 .symbol-controls { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
 .symbol-controls input { flex: 1; min-width: 0; }
 

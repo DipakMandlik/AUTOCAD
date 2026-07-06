@@ -15,10 +15,10 @@ bound; the oldest entries are silently dropped once full, same tradeoff
 
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Deque, List, Optional
+from typing import Deque, Dict, List, Optional
 
 
 @dataclass(frozen=True)
@@ -29,6 +29,17 @@ class ExecutionLogEntry:
     message: Optional[str]
     duration_ms: float
     timestamp: str
+
+
+@dataclass(frozen=True)
+class ToolStats:
+    tool: str
+    calls: int
+    successes: int
+    failures: int
+    avg_duration_ms: float
+    min_duration_ms: float
+    max_duration_ms: float
 
 
 class ExecutionLog:
@@ -55,6 +66,30 @@ class ExecutionLog:
         count = len(self._entries)
         self._entries.clear()
         return count
+
+    def stats(self) -> List[ToolStats]:
+        """Per-tool aggregates over whatever is currently in the bounded
+        window — not a cumulative historical metric once eviction starts
+        dropping entries, same caveat as `recent()`. Sorted by call count,
+        most-called first, since that's the natural read order for a
+        "what's hot" performance view."""
+        by_tool: Dict[str, List[ExecutionLogEntry]] = defaultdict(list)
+        for entry in self._entries:
+            by_tool[entry.tool].append(entry)
+
+        result = [
+            ToolStats(
+                tool=tool,
+                calls=len(entries),
+                successes=sum(1 for e in entries if e.success),
+                failures=sum(1 for e in entries if not e.success),
+                avg_duration_ms=sum(e.duration_ms for e in entries) / len(entries),
+                min_duration_ms=min(e.duration_ms for e in entries),
+                max_duration_ms=max(e.duration_ms for e in entries),
+            )
+            for tool, entries in by_tool.items()
+        ]
+        return sorted(result, key=lambda s: s.calls, reverse=True)
 
     def __len__(self) -> int:
         return len(self._entries)
