@@ -725,6 +725,40 @@ steps.
   live preview while the second showed its real validation error and
   neither blocked the other; then confirmed Remove and Clear.
 
+## Phase 17: More symbol disciplines (mechanical, HVAC, structural)
+
+The lowest-risk item left on the deferred list: Phase 10 already proved
+the symbol pattern generalizes, so this phase is "more of them," not new
+architecture — 6 symbols across 3 new disciplines (mechanical: `bearing`,
+`weld_symbol`; HVAC: `diffuser`, `thermostat`; structural: `column`,
+`beam`), bringing the catalog to 15.
+
+- **Zero changes needed outside `symbols/library.py` and its tests**:
+  `list_symbols`/`insert_symbol`, `GET /symbols`, `GET /symbols/{name}
+  /preview`, and the dashboard's Symbols panel all already iterate
+  `SYMBOL_LIBRARY` generically rather than hardcoding symbol names —
+  confirmed live via Playwright, where all 15 symbols (old and new)
+  appeared in the grid the moment the catalog gained entries, with no
+  dashboard code touched.
+- **First symbol built from a `TextEntity`**: every prior symbol used
+  only `LineEntity`/`CircleEntity`/`ArcEntity`/`PolylineEntity`.
+  `thermostat` needed a "T" label, so a new `_text()` helper was added
+  alongside `_line()`/`_circle()`/`_arc()`, transforming a text position
+  through the same `_transform()` scale-rotate-translate pipeline and
+  scaling the text height by the symbol's `scale` argument (verified by
+  a dedicated test and visually via PNG render — the letter appears
+  centered and legible inside the thermostat's circle).
+- Each new symbol was rendered to PNG and visually inspected before
+  being committed, same discipline as Phase 10: `bearing` (concentric
+  circles), `weld_symbol` (reference line + fillet triangle), `diffuser`
+  (square with an X — distinct from `column`'s nested-squares so the two
+  don't read as the same shape), `thermostat` (circle + "T"), `column`
+  (nested squares), `beam` (I-beam cross-section: two flanges + a web).
+- Same scope boundary as Phase 10, restated rather than re-litigated:
+  these are illustrative, recognizable symbols, not verified against
+  ASME Y14.5, ISO 14617, or any other licensed standard's exact
+  proportions or line weights.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -750,10 +784,11 @@ than via a real background worker.
   dimensions — named-standard layer conventions) — the symbol *library*
   now exists (Phase 10), but it is illustrative geometry,
   not licensed standards content
-- Additional symbol disciplines beyond electrical/piping/architectural
-  (mechanical, hydraulic, pneumatic, civil, HVAC, structural,
-  instrumentation, networking, industrial automation, warehouse,
-  manufacturing) — same pattern as Phase 10, just more of them
+- Additional symbol disciplines beyond electrical/piping/architectural/
+  mechanical/HVAC/structural (Phase 17 added the latter three) — hydraulic,
+  pneumatic, civil, instrumentation, networking, industrial automation,
+  warehouse, manufacturing remain unbuilt — same pattern as Phases 10 and
+  17, just more of them
 - DWG export and hatch support in `.scr`/`.lsp` (DXF, SVG, PNG, SCR, and
   LISP all work now for non-hatch geometry)
 - FreeCAD/Fusion/SolidWorks/Revit backends (the `CADBackend` interface is

@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 281 tests, all run headlessly against the DXF backend
+pytest -v      # 294 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -264,7 +264,7 @@ Briefly:
 - `export/` — `render_svg`/`render_png` (real, CAD-accurate rendering via ezdxf's drawing addon) and `render_scr`/`render_lisp` (AutoCAD Script / AutoLISP generation, unverified)
 - `plugins/` — the Plugin SDK: `Plugin` data shape + file-based discovery/apply
 - `examples/plugins/` — a complete, runnable example plugin
-- `symbols/` — the built-in engineering symbol library (electrical/piping/architectural), `insert_symbol`/`list_symbols` tools sit on top
+- `symbols/` — the built-in engineering symbol library (electrical/piping/architectural/mechanical/HVAC/structural, 15 symbols), `insert_symbol`/`list_symbols` tools sit on top
 - `imports/` — `svg_import.py`, a constrained SVG-to-`DrawingPlan` parser; the `import_svg` tool sits on top
 - `templates/` — parametrized drawing-sheet templates (border + title block); `insert_title_block`/`list_templates` tools sit on top
 - `apps/execution_log.py` — bounded, in-memory tool-call audit trail backing the dashboard's Logs panel (`get_execution_log`/`clear_execution_log`) and Performance panel (`get_performance_stats`)
@@ -303,11 +303,13 @@ gaps even within SVG); the ANSI/ISO/IEC/ASME/DIN/JIS standards
 knowledge base itself (title block *standards* — exact zone layout,
 field codes, revision tables — as opposed to `insert_title_block`'s
 plain public-domain paper dimensions) and symbol disciplines beyond
-electrical/piping/architectural (a starter symbol library across those
-three disciplines now exists — `symbols/`, see "Available tools"
-above — but the symbols are illustrative/recognizable, not verified
-against any standard's exact line weights, proportions, or annotation
-conventions); DWG export and
+electrical/piping/architectural/mechanical/HVAC/structural (a 15-symbol
+library across those six disciplines now exists — `symbols/`, see
+"Available tools" above — but the symbols are illustrative/recognizable,
+not verified against any standard's exact line weights, proportions, or
+annotation conventions; hydraulic, pneumatic, civil, instrumentation,
+networking, industrial automation, warehouse, and manufacturing symbols
+remain unbuilt); DWG export and
 hatch support in .scr/.lsp (DXF, SVG, PNG, SCR, and LISP all work now for
 non-hatch geometry); non-AutoCAD-family backends (FreeCAD, Fusion 360,
 etc.); true multi-document/multi-tenant project isolation; and

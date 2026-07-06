@@ -14,7 +14,15 @@ import math
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Tuple
 
-from engine.geometry.primitives import ArcEntity, CircleEntity, Entity, LineEntity, Point3, PolylineEntity
+from engine.geometry.primitives import (
+    ArcEntity,
+    CircleEntity,
+    Entity,
+    LineEntity,
+    Point3,
+    PolylineEntity,
+    TextEntity,
+)
 
 Point2 = Tuple[float, float]
 SymbolBuilder = Callable[..., List[Entity]]
@@ -63,6 +71,13 @@ def _arc(
     return ArcEntity(
         center=c, radius=radius * scale, start_angle=start_angle + rotation, end_angle=end_angle + rotation
     )
+
+
+def _text(
+    position: Point2, text: str, origin: Point3, scale: float, rotation: float, height: float = 0.3
+) -> TextEntity:
+    (p,) = _transform([position], origin, scale, rotation)
+    return TextEntity(position=p, text=text, height=height * scale, rotation=rotation)
 
 
 # --- Electrical --------------------------------------------------------
@@ -141,6 +156,60 @@ def north_arrow(origin: Point3, scale: float = 1.0, rotation: float = 0.0) -> Li
     ]
 
 
+# --- Mechanical ----------------------------------------------------------
+
+
+def bearing(origin: Point3, scale: float = 1.0, rotation: float = 0.0) -> List[Entity]:
+    return [
+        _circle((0.5, 0), 0.5, origin, scale, rotation),
+        _circle((0.5, 0), 0.25, origin, scale, rotation),
+    ]
+
+
+def weld_symbol(origin: Point3, scale: float = 1.0, rotation: float = 0.0) -> List[Entity]:
+    return [
+        _line([(0, 0), (1, 0)], origin, scale, rotation),
+        _polyline([(0.3, 0), (0.5, -0.3), (0.7, 0)], origin, scale, rotation, closed=True),
+    ]
+
+
+# --- HVAC ------------------------------------------------------------------
+
+
+def diffuser(origin: Point3, scale: float = 1.0, rotation: float = 0.0) -> List[Entity]:
+    return [
+        _polyline([(0, 0), (1, 0), (1, 1), (0, 1)], origin, scale, rotation, closed=True),
+        _line([(0, 0), (1, 1)], origin, scale, rotation),
+        _line([(0, 1), (1, 0)], origin, scale, rotation),
+    ]
+
+
+def thermostat(origin: Point3, scale: float = 1.0, rotation: float = 0.0) -> List[Entity]:
+    return [
+        _circle((0.5, 0.5), 0.5, origin, scale, rotation),
+        _text((0.38, 0.35), "T", origin, scale, rotation, height=0.35),
+    ]
+
+
+# --- Structural --------------------------------------------------------
+
+
+def column(origin: Point3, scale: float = 1.0, rotation: float = 0.0) -> List[Entity]:
+    inner = [(0.25, 0.25), (0.75, 0.25), (0.75, 0.75), (0.25, 0.75)]
+    return [
+        _polyline([(0, 0), (1, 0), (1, 1), (0, 1)], origin, scale, rotation, closed=True),
+        _polyline(inner, origin, scale, rotation, closed=True),
+    ]
+
+
+def beam(origin: Point3, scale: float = 1.0, rotation: float = 0.0) -> List[Entity]:
+    return [
+        _line([(0, 1), (1, 1)], origin, scale, rotation),
+        _line([(0, 0), (1, 0)], origin, scale, rotation),
+        _line([(0.5, 0), (0.5, 1)], origin, scale, rotation),
+    ]
+
+
 @dataclass(frozen=True)
 class SymbolDefinition:
     name: str
@@ -161,5 +230,15 @@ SYMBOL_LIBRARY: Dict[str, SymbolDefinition] = {
         SymbolDefinition("door_swing", "architectural", "Door leaf with 90-degree swing arc", door_swing),
         SymbolDefinition("window", "architectural", "Simple window symbol", window),
         SymbolDefinition("north_arrow", "architectural", "North arrow for site/floor plans", north_arrow),
+        SymbolDefinition("bearing", "mechanical", "Concentric-circle bearing symbol", bearing),
+        SymbolDefinition(
+            "weld_symbol", "mechanical", "Reference line with a fillet-weld triangle", weld_symbol
+        ),
+        SymbolDefinition("diffuser", "hvac", "Square ceiling diffuser symbol (X pattern)", diffuser),
+        SymbolDefinition(
+            "thermostat", "hvac", "Circular thermostat symbol with a 'T' label", thermostat
+        ),
+        SymbolDefinition("column", "structural", "Column cross-section (nested squares)", column),
+        SymbolDefinition("beam", "structural", "I-beam cross-section symbol", beam),
     ]
 }

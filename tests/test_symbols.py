@@ -6,6 +6,7 @@ from engine.geometry.primitives import (
     DrawingPlan,
     LineEntity,
     PolylineEntity,
+    TextEntity,
 )
 from engine.validator.engine import ValidationEngine
 from export.renderer import render_svg
@@ -97,3 +98,58 @@ def test_symbol_rotation_rotates_arc_angles():
 
 def test_unknown_symbol_not_in_catalog():
     assert "not_a_real_symbol" not in SYMBOL_LIBRARY
+
+
+def test_bearing_is_two_concentric_circles():
+    entities = SYMBOL_LIBRARY["bearing"].build((0, 0, 0), 1.0, 0.0)
+    assert len(entities) == 2
+    assert all(isinstance(e, CircleEntity) for e in entities)
+    radii = sorted(e.radius for e in entities)
+    assert radii == pytest.approx([0.25, 0.5])
+    assert entities[0].center == entities[1].center
+
+
+def test_weld_symbol_is_line_plus_closed_triangle():
+    entities = SYMBOL_LIBRARY["weld_symbol"].build((0, 0, 0), 1.0, 0.0)
+    assert len(entities) == 2
+    line = next(e for e in entities if isinstance(e, LineEntity))
+    triangle = next(e for e in entities if isinstance(e, PolylineEntity))
+    assert line.start == (0.0, 0.0, 0.0) and line.end == (1.0, 0.0, 0.0)
+    assert triangle.closed is True
+    assert len(triangle.points) == 3
+
+
+def test_diffuser_is_closed_square_plus_two_diagonals():
+    entities = SYMBOL_LIBRARY["diffuser"].build((0, 0, 0), 1.0, 0.0)
+    assert len(entities) == 3
+    square = next(e for e in entities if isinstance(e, PolylineEntity))
+    assert square.closed is True
+    assert len(square.points) == 4
+    diagonals = [e for e in entities if isinstance(e, LineEntity)]
+    assert len(diagonals) == 2
+
+
+def test_thermostat_is_circle_plus_text():
+    entities = SYMBOL_LIBRARY["thermostat"].build((0, 0, 0), 1.0, 0.0)
+    types = {type(e) for e in entities}
+    assert types == {CircleEntity, TextEntity}
+    text = next(e for e in entities if isinstance(e, TextEntity))
+    assert text.text == "T"
+
+
+def test_column_is_two_nested_closed_squares():
+    entities = SYMBOL_LIBRARY["column"].build((0, 0, 0), 1.0, 0.0)
+    assert len(entities) == 2
+    assert all(isinstance(e, PolylineEntity) and e.closed for e in entities)
+
+
+def test_beam_is_three_lines_forming_an_i_shape():
+    entities = SYMBOL_LIBRARY["beam"].build((0, 0, 0), 1.0, 0.0)
+    assert len(entities) == 3
+    assert all(isinstance(e, LineEntity) for e in entities)
+
+
+def test_thermostat_text_scales_with_symbol_scale():
+    entities = SYMBOL_LIBRARY["thermostat"].build((0, 0, 0), 2.0, 0.0)
+    text = next(e for e in entities if isinstance(e, TextEntity))
+    assert text.height == pytest.approx(0.7)  # local height 0.35 * scale 2
