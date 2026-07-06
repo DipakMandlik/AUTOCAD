@@ -56,8 +56,28 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 138 tests, all run headlessly against the DXF backend
+pytest -v      # 153 tests, all run headlessly against the DXF backend
 ruff check .
+```
+
+## Plugins
+
+Drop a `.py` file defining a module-level `PLUGIN` object into the
+configured plugins directory (`plugins.directory` in config, default
+`./plugins_installed`) and the platform picks it up at startup — no core
+file needs to change. A plugin can contribute new MCP/REST tools, new
+validation rules, and new CAD backends. See
+[`examples/plugins/example_plugin.py`](examples/plugins/example_plugin.py)
+for a complete, runnable example (a `draw_regular_polygon` tool plus a
+custom validation rule), and `docs/architecture.md` (Phase 9) for how
+discovery works and a real scope boundary: a plugin-registered backend
+can't currently be selected as the *default* session backend via the
+`cad.backend` config field (config is validated before plugins load).
+
+```bash
+mkdir -p plugins_installed
+cp examples/plugins/example_plugin.py plugins_installed/
+uvicorn apps.api.main:app --reload   # draw_regular_polygon now appears in GET /tools
 ```
 
 ## Run the REST API + dashboard
@@ -159,6 +179,8 @@ Briefly:
 - `autocad/` — Windows COM backend for AutoCAD/GstarCAD/ZWCAD
 - `storage/` — `Project`/`Revision` models + file-based `ProjectStore` (one JSON document per project)
 - `export/` — `render_svg`/`render_png` (real, CAD-accurate rendering via ezdxf's drawing addon) and `render_scr`/`render_lisp` (AutoCAD Script / AutoLISP generation, unverified)
+- `plugins/` — the Plugin SDK: `Plugin` data shape + file-based discovery/apply
+- `examples/plugins/` — a complete, runnable example plugin
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
@@ -175,14 +197,16 @@ this pass attempted.
 ## What's deferred
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
-for why): plugin SDK; the dashboard sections that need a plugin SDK or
-richer UI first (Templates, Symbol Libraries, Execution Queue, Logs,
-Performance, Settings); multi-format import (PDF/image/sketch/Excel);
-symbol libraries and the ANSI/ISO/IEC standards knowledge base; DWG export
-and hatch support in .scr/.lsp (DXF, SVG, PNG, SCR, and LISP all work now
-for non-hatch geometry); non-AutoCAD-family backends (FreeCAD, Fusion 360,
-etc.); and true multi-document/multi-tenant project isolation. The
-`CADBackend` interface is designed so new backends can be added later
+for why): dashboard sections that need richer UI/backend support
+(Templates, Symbol Libraries, Execution Queue, Logs, Performance,
+Settings); multi-format import (PDF/image/sketch/Excel); symbol libraries
+and the ANSI/ISO/IEC standards knowledge base; DWG export and hatch
+support in .scr/.lsp (DXF, SVG, PNG, SCR, and LISP all work now for
+non-hatch geometry); non-AutoCAD-family backends (FreeCAD, Fusion 360,
+etc.); true multi-document/multi-tenant project isolation; and
+plugin-provided CAD backends as the selectable default session backend
+(a plugin backend works fine when a plugin's own tools call it directly).
+The `CADBackend` interface is designed so new backends can be added later
 without touching the planning/validation spine. MCP resources and prompts
 (`drawing://current`, the `cad-assistant` prompt) from the original repo
 were also not carried over as MCP-native resources — `get_current_drawing`

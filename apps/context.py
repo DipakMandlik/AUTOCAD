@@ -35,6 +35,7 @@ class ServerContext:
 
 
 def build_context(settings: Settings) -> ServerContext:
+    _load_plugins(settings)
     backend = get_backend(
         settings.cad.backend,
         output_dir=settings.output.directory,
@@ -42,8 +43,34 @@ def build_context(settings: Settings) -> ServerContext:
     )
     return ServerContext(
         planner=Planner(),
+        # Built after plugins are loaded: ValidationEngine() snapshots
+        # DEFAULT_RULES at construction time, so a plugin-contributed rule
+        # added afterwards would silently never run.
         validator=ValidationEngine(),
         backend=backend,
         color_parser=FallbackParser(),
         project_store=ProjectStore(settings.storage.directory),
+    )
+
+
+def _load_plugins(settings: Settings) -> None:
+    """Discover and apply plugins into the real shared registries.
+
+    Imports are deferred to call time rather than module level: apps.server
+    .tools imports ServerContext from this module, so this module cannot
+    import apps.server.tools at *module load* time without a circular
+    import. By the time build_context() actually runs, both modules have
+    already finished initializing, so the import below is safe.
+    """
+    from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME
+    from cad.registry import register_backend
+    from engine.validator.rules import DEFAULT_RULES
+    from plugins.loader import discover_and_apply
+
+    discover_and_apply(
+        settings.plugins.directory,
+        TOOL_REGISTRY,
+        TOOLS_BY_NAME,
+        DEFAULT_RULES,
+        register_backend,
     )

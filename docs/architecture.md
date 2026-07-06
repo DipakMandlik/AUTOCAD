@@ -332,14 +332,71 @@ this environment to run the generated scripts against. The command
 sequences follow documented AutoCAD command-line prompt order; verify
 before relying on them.
 
+## Phase 9: Plugin SDK
+
+The master vision's last major architectural piece: "third-party
+developers should be able to build plugins without modifying the core
+platform." The existing architecture already had the right shape for
+this — `TOOL_REGISTRY`/`TOOLS_BY_NAME`, `DEFAULT_RULES`, and
+`cad.registry` are all just a list/dict a plugin can be merged into — so
+this phase is mostly formalizing discovery and a stable data shape, not a
+new subsystem.
+
+- **`plugins/base.py`**: `Plugin` — a name/version plus three optional
+  lists: `tools` (`ToolSpec`s), `validation_rules` (`RuleFn`s), and
+  `backends` (name → `CADBackend` factory).
+- **`plugins/loader.py`**: `discover(directory)` imports every `.py` file
+  in the configured plugins directory (`config.PluginSettings.directory`,
+  default `./plugins_installed`; a missing directory is a no-op, not an
+  error) and collects each file's module-level `PLUGIN` object.
+  `apply(plugins, tool_registry, tools_by_name, validation_rules,
+  register_backend_fn)` merges those into the given registries — **in
+  place, taking them as explicit arguments** rather than importing the
+  real global ones directly. That is what makes `apply()` unit-testable
+  against throwaway lists/dicts with zero risk of leaking a test plugin's
+  tool into `test_tools.py`'s exact-tool-set assertion; the one production
+  call site (`apps.context.build_context`) passes the real
+  `TOOL_REGISTRY`/`TOOLS_BY_NAME`/`DEFAULT_RULES`.
+- **`examples/plugins/example_plugin.py`**: a complete, runnable example —
+  a `draw_regular_polygon` tool built entirely out of the existing
+  `draw_polyline` operation (no new `Entity` type needed) plus a
+  `default_layer_used` validation rule enforcing an organization
+  convention that has no place in the built-in rule set because it's a
+  policy choice, not a geometric correctness check. Both extension points
+  were verified end-to-end: the tool actually draws a hexagon, and the
+  rule actually fires as a warning in the response.
+
+**A real circular-import constraint shaped the wiring.** `apps.server.tools`
+imports `ServerContext` from `apps.context` (to type-hint tool handlers),
+so `apps.context` cannot import `apps.server.tools` at module load time —
+that would be a cycle. `build_context()` needs `TOOL_REGISTRY`/
+`TOOLS_BY_NAME` to hand to the plugin loader, so `_load_plugins()` does
+that import *inside the function body* instead of at module level: by the
+time `build_context()` is actually called, both modules have finished
+initializing, so the deferred import is safe. Plugin loading also has to
+happen **before** `ValidationEngine()` is constructed in the same
+function — `ValidationEngine.__init__` snapshots `DEFAULT_RULES` into
+`self.rules` at construction time, so a plugin rule appended afterward
+would silently never run.
+
+**Scope boundary, stated plainly**: a plugin-registered backend can be
+used directly by that plugin's own tool handlers (via
+`cad.registry.get_backend("name", ...)`), but it cannot currently be
+selected as the *default* session backend through the `cad.backend`
+config field. Config validation (`CADSettings._known_backend`, which
+calls `cad.registry.available_backends()`) happens when `Settings.load()`
+runs, before plugins are loaded — a not-yet-registered backend name would
+fail that validation. Solving this would mean loading plugins before
+parsing config, which has its own ordering problems (where would the
+plugins-directory setting come from?); not attempted here.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
-placeholder directories were created for them (an empty `plugins/` folder
-communicates nothing and just adds noise):
+placeholder directories were created for them (an empty `dashboard`
+section folder communicates nothing and just adds noise):
 
-- Plugin SDK
-- Dashboard sections that need a plugin SDK or richer UI first: Templates,
+- Dashboard sections that need richer UI/backend support: Templates,
   Symbol Libraries, Execution Queue, Logs, Performance, Settings
 - Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
 - Symbol libraries / ANSI-ISO-IEC standards knowledge base
@@ -348,6 +405,8 @@ communicates nothing and just adds noise):
 - FreeCAD/Fusion/SolidWorks/Revit backends (the `CADBackend` interface is
   designed so these can be added later as new adapters)
 - True multi-document/multi-tenant project isolation (see the Phase 6 note above)
+- Plugin-provided CAD backends as the selectable default session backend
+  (see the Phase 9 scope boundary above)
 
 These become straightforward additions once the spine under them is proven
 — building them before that spine exists would mean rewriting them anyway.

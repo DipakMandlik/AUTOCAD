@@ -52,6 +52,12 @@ class StorageSettings(BaseModel):
     directory: str = "./projects"
 
 
+class PluginSettings(BaseModel):
+    # Not created by default: an absent directory just means no plugins
+    # are loaded, not an error (see plugins/loader.py).
+    directory: str = "./plugins_installed"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CADMCP_", env_nested_delimiter="__")
 
@@ -59,6 +65,7 @@ class Settings(BaseSettings):
     cad: CADSettings = Field(default_factory=CADSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
+    plugins: PluginSettings = Field(default_factory=PluginSettings)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "Settings":
