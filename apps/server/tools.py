@@ -12,22 +12,25 @@ same plan -> validate -> (autofix) -> execute pipeline.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
-from cad.backend import CADBackend
+from apps.context import ServerContext
+from cad.backend import ExecutionResult
 from engine.geometry.primitives import DrawingPlan
-from engine.planner.planner import NonGeometryIntent, Planner, PlanningError
-from engine.validator.engine import ValidationEngine
+from engine.planner.planner import NonGeometryIntent, PlanningError
+from engine.validator.engine import ValidationReport
 from engine.validator.issue import Issue
 from nlp.fallback import FallbackParser
 
-
-@dataclass
-class ServerContext:
-    planner: Planner
-    validator: ValidationEngine
-    backend: CADBackend
-    color_parser: FallbackParser
+__all__ = [
+    "ServerContext",
+    "TOOL_REGISTRY",
+    "TOOLS_BY_NAME",
+    "ToolSpec",
+    "execute_plan",
+    "run_pipeline",
+    "issue_to_dict",
+]
 
 
 def _point_schema(description: str) -> Dict[str, Any]:
@@ -66,23 +69,45 @@ def _resolve_color(value: Any, color_parser: FallbackParser) -> Optional[int]:
     return color_parser.extract_color(str(value))
 
 
-def execute_plan(plan: DrawingPlan, ctx: ServerContext) -> Dict[str, Any]:
+def run_pipeline(
+    plan: DrawingPlan, ctx: ServerContext
+) -> Tuple[DrawingPlan, ValidationReport, List[Issue], Optional[ExecutionResult]]:
     """The one pipeline every drawing operation goes through: validate,
-    autofix if needed, re-validate, then execute against the backend."""
+    autofix if needed, re-validate, then execute against the backend.
+
+    Returns the (possibly autofixed) plan, the final validation report, the
+    fixes that were applied, and the execution result — or `None` for the
+    result if the plan is still invalid after autofixing. Shared by the MCP
+    tool dispatch below and the REST API's batch execute endpoint, so both
+    transports run identical validate/autofix/execute semantics.
+    """
     report = ctx.validator.validate(plan)
     applied_fixes: List[Issue] = []
-    if not report.is_valid:
+    # Gate on "any autofixable issue", not "any error": duplicate entities
+    # and similar autofixable problems are warning-severity, so gating on
+    # is_valid alone would silently skip fixing them whenever no separate
+    # error was also present.
+    if any(issue.autofixable for issue in report.issues):
         plan, applied_fixes = ctx.validator.autofix(plan)
         report = ctx.validator.validate(plan)
 
     if not report.is_valid:
+        return plan, report, applied_fixes, None
+
+    result = ctx.backend.execute(plan)
+    return plan, report, applied_fixes, result
+
+
+def execute_plan(plan: DrawingPlan, ctx: ServerContext) -> Dict[str, Any]:
+    """MCP-facing wrapper around run_pipeline for single-operation plans."""
+    _plan, report, applied_fixes, result = run_pipeline(plan, ctx)
+    if result is None:
         return {
             "success": False,
             "message": "validation failed",
             "issues": [issue_to_dict(i) for i in report.issues],
         }
 
-    result = ctx.backend.execute(plan)
     entity_result = result.results[0] if result.results else None
     return {
         "success": result.success,

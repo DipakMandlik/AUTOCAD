@@ -3,6 +3,8 @@ pydantic>=2.5
 pydantic-settings>=2.0
 mcp>=1.0.0
 ezdxf>=1.3
+fastapi>=0.110
+uvicorn>=0.27
 
 # AutoCAD/GstarCAD/ZWCAD COM backend — Windows only.
 # (The original requirements.txt also pinned `typing>=3.7.4.3`, a defunct
@@ -15,3 +17,4 @@ pywin32>=228; platform_system == "Windows"
 # Development/test tooling
 pytest>=7.4
 ruff>=0.4
+httpx>=0.27

@@ -77,13 +77,27 @@ nlp/
                           nlp_processor.py), demoted to what it actually is:
                           a cheap, offline fallback intent source, not "the
                           NLP layer." Bugs fixed, single keyword table.
-apps/server/
-  tools.py                  — ToolSpec registry: one definition per tool
-                          (name, Pydantic args model, handler). Single
-                          source for MCP `list_tools` schemas *and*
-                          `call_tool` dispatch *and* `process_command`.
-  server.py                  — MCP stdio server wiring: config -> backend
+apps/
+  context.py                 — ServerContext (planner + validator + backend)
+                          and build_context(settings). The one place that
+                          wires config into a running context; both apps
+                          below import it instead of each building their own.
+  server/
+    tools.py                  — ToolSpec registry: one definition per tool
+                          (name, Pydantic args model, handler), plus
+                          run_pipeline() (validate -> autofix -> execute).
+                          Single source for MCP `list_tools` schemas *and*
+                          `call_tool` dispatch *and* `process_command` *and*
+                          the REST API below.
+    server.py                  — MCP stdio server wiring: config -> backend
                           registry -> planner/validator -> tool registry.
+  api/
+    main.py                    — REST API (FastAPI): a second transport over
+                          the exact same ServerContext/TOOL_REGISTRY/
+                          run_pipeline, adding two capabilities MCP's
+                          one-tool-per-call model doesn't: a validate-only
+                          dry run, and executing a multi-entity DrawingPlan
+                          in a single call. See "Phase 4" below.
 config.py                    — One Pydantic settings model, env-overridable
                           (`CADMCP_*`), replacing the three independent
                           `config.json` readers in the original code.
@@ -120,20 +134,44 @@ execute pipeline. That is what eliminates the duplicated dispatch logic and
 is the prerequisite for adding an LLM-backed planner later without another
 rewrite.
 
-## What is explicitly deferred (not stubbed)
+## Phase 4: REST API
 
-Per the "core framework MVP" scope, the following from the master vision are
-**not** built in this pass, and no placeholder directories were created for
-them (an empty `dashboard/` or `plugins/` folder communicates nothing and
-just adds noise):
+Once the core framework was in place and tested, the next highest-leverage
+addition was a second transport: a REST API (`apps/api/main.py`), because
+(a) it is the prerequisite for a future dashboard, and (b) building it
+immediately proved out the Phase 3 claim that the engine is
+transport-agnostic — `apps/api/main.py` contains zero planning, validation,
+or execution logic. It only wires `ServerContext` and `TOOL_REGISTRY` (moved
+to `apps/context.py` so both apps share one wiring path) into HTTP routes:
 
-- REST API / dashboard / plugin SDK
+- `GET /health`, `GET /tools` — introspection
+- `POST /tools/{name}` — the same single-operation dispatch as an MCP tool call
+- `POST /drawings/validate` — validate a full `DrawingPlan` without executing
+- `POST /drawings/execute` — execute a multi-entity `DrawingPlan` in one call,
+  something the one-tool-per-MCP-call model can't do directly
+
+Writing the REST test suite (`tests/test_api.py`) surfaced a real bug in
+`run_pipeline`: autofix was gated on `report.is_valid`, which only reflects
+*errors*. `duplicate_entity` is warning-severity, so a plan whose only
+problem was a duplicate entity skipped autofix entirely and both copies got
+drawn. Fixed by gating on "any autofixable issue is present" instead —
+caught before it shipped, by the second transport's tests exercising a
+multi-entity path the first transport's tests hadn't.
+
+## What is still deferred (not stubbed)
+
+The following from the master vision are **not** built yet, and no
+placeholder directories were created for them (an empty `dashboard/` or
+`plugins/` folder communicates nothing and just adds noise):
+
+- Dashboard / plugin SDK
 - Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
 - Symbol libraries / ANSI-ISO-IEC standards knowledge base
 - DWG/SVG/PDF/LISP/SCR export (DXF is the one working export format for now)
 - FreeCAD/Fusion/SolidWorks/Revit backends (the `CADBackend` interface is
   designed so these can be added later as new adapters)
+- Persistence/project/revision-history layer (both apps currently hold one
+  in-memory backend document for the process lifetime)
 
-These become straightforward additions once the planning/validation/backend
-spine exists and is under test — building them now, before that spine is
-proven, would mean rewriting them anyway.
+These become straightforward additions once the spine under them is proven
+— building them before that spine exists would mean rewriting them anyway.

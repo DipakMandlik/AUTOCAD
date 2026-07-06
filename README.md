@@ -2,8 +2,8 @@
 
 An AI CAD engineering platform: natural language and typed tool calls flow
 through a planning → validation → execution pipeline before anything is
-drawn, exposed to LLM clients (Claude Desktop, Cursor, MCP Inspector) over
-the Model Context Protocol.
+drawn, exposed both to LLM clients (Claude Desktop, Cursor, MCP Inspector)
+over the Model Context Protocol and to any HTTP client over a REST API.
 
 This repository builds on [daobataotie/CAD-MCP](https://github.com/daobataotie/CAD-MCP)
 as a ground-up redesign. See:
@@ -54,8 +54,28 @@ pip install -e ".[autocad]"      # adds pywin32, Windows only
 ## Run the tests
 
 ```bash
-pytest -v      # 58 tests, all run headlessly against the DXF backend
+pytest -v      # 69 tests, all run headlessly against the DXF backend
 ruff check .
+```
+
+## Run the REST API
+
+```bash
+uvicorn apps.api.main:app --reload
+```
+
+- `GET /health` — status + which backend is active
+- `GET /tools` — list every tool's name/description/JSON schema
+- `POST /tools/{name}` — call a tool (same handlers and pipeline as MCP)
+- `POST /drawings/validate` — validate a full `DrawingPlan` without executing
+- `POST /drawings/execute` — execute a multi-entity `DrawingPlan` in one call
+
+```bash
+curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
+  -d '{"center": [0, 0], "radius": 10}'
+
+curl -X POST localhost:8000/drawings/execute -H 'content-type: application/json' \
+  -d '{"operations": [{"type": "line", "start": [0,0], "end": [10,10]}]}'
 ```
 
 ## Run the MCP server
@@ -104,17 +124,19 @@ Briefly:
 - `cad/` — the `CADBackend` interface and backend registry
 - `dxf/` — headless backend (ezdxf); what the test suite runs against
 - `autocad/` — Windows COM backend for AutoCAD/GstarCAD/ZWCAD
+- `apps/context.py` — shared `ServerContext` wiring used by both apps below
 - `apps/server/` — the MCP stdio server and its tool registry
+- `apps/api/` — the REST API (same tool registry, second transport)
 - `config.py` — single validated settings source
 
 ## What's deferred
 
-Per the master platform vision, not built in this pass (see
-`docs/architecture.md` for why): REST API, dashboard, plugin SDK,
-multi-format import (PDF/image/sketch/Excel), symbol libraries and the
-ANSI/ISO/IEC standards knowledge base, DWG/SVG/PDF/LISP/SCR export, and
-non-AutoCAD-family backends (FreeCAD, Fusion 360, etc.). The `CADBackend`
-interface is designed so those backends can be added later without
-touching the planning/validation spine. MCP resources and prompts
+Per the master platform vision, not built yet (see `docs/architecture.md`
+for why): dashboard, plugin SDK, multi-format import (PDF/image/sketch/
+Excel), symbol libraries and the ANSI/ISO/IEC standards knowledge base,
+DWG/SVG/PDF/LISP/SCR export, non-AutoCAD-family backends (FreeCAD, Fusion
+360, etc.), and a persistence/project/revision-history layer. The
+`CADBackend` interface is designed so new backends can be added later
+without touching the planning/validation spine. MCP resources and prompts
 (`drawing://current`, the `cad-assistant` prompt) from the original repo
-were also not carried over in this pass.
+were also not carried over.

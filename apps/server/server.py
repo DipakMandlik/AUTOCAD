@@ -18,12 +18,9 @@ import mcp.types as types
 from mcp.server import NotificationOptions, Server
 from mcp.server.models import InitializationOptions
 
-from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME, ServerContext
-from cad.registry import get_backend
+from apps.context import ServerContext, build_context
+from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME
 from config import Settings
-from engine.planner.planner import Planner
-from engine.validator.engine import ValidationEngine
-from nlp.fallback import FallbackParser
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,20 +28,6 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(), logging.FileHandler("cad_mcp.log", encoding="utf-8")],
 )
 logger = logging.getLogger("cad_mcp_server")
-
-
-def build_context(settings: Settings) -> ServerContext:
-    backend = get_backend(
-        settings.cad.backend,
-        output_dir=settings.output.directory,
-        startup_wait_time=settings.cad.startup_wait_time,
-    )
-    return ServerContext(
-        planner=Planner(),
-        validator=ValidationEngine(),
-        backend=backend,
-        color_parser=FallbackParser(),
-    )
 
 
 def build_mcp_server(settings: Settings, ctx: ServerContext) -> Server:

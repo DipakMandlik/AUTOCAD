@@ -1,7 +1,8 @@
 import pytest
 
-from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME, ServerContext
+from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME, ServerContext, run_pipeline
 from cad.registry import get_backend
+from engine.geometry.primitives import DrawingPlan
 from engine.planner.planner import Planner
 from engine.validator.engine import ValidationEngine
 from nlp.fallback import FallbackParser
@@ -81,3 +82,15 @@ def test_zero_length_line_is_autofixed_and_reported(ctx):
     # empty plan — nothing to draw, but this must not look like a crash.
     assert result["success"] is True
     assert any(f["code"] == "zero_length_line" for f in result["autofixed"])
+
+
+def test_run_pipeline_autofixes_warning_only_issues(ctx):
+    # regression test: duplicate_entity is a *warning*, not an error, so a
+    # plan with nothing but a duplicate must still trigger autofix. Gating
+    # autofix on "report.is_valid" (errors only) would silently skip it.
+    entity = {"type": "circle", "center": [0, 0], "radius": 5}
+    plan = DrawingPlan(operations=[entity, dict(entity)])
+    _plan, report, applied, result = run_pipeline(plan, ctx)
+    assert any(i.code == "duplicate_entity" for i in applied)
+    assert result is not None
+    assert len(result.results) == 1
