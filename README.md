@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 106 tests, all run headlessly against the DXF backend
+pytest -v      # 138 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -67,7 +67,8 @@ uvicorn apps.api.main:app --reload
 ```
 
 Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
-tool explorer with live schemas, an SVG drawing preview, a validate-only
+tool explorer with live schemas, an SVG drawing preview with an
+accurate-render toggle, .scr/.lsp download buttons, a validate-only
 dry-run panel, and a Projects panel for saving/loading drawings), or use
 the API directly:
 
@@ -82,6 +83,8 @@ the API directly:
 - `POST /projects/{id}/revisions` — snapshot the current drawing as a new revision
 - `POST /projects/{id}/load` — re-draw a saved project's plan
 - `GET /projects/{id}/render?format=svg|png` — render a saved project's plan
+- `GET /drawings/current/export?format=scr|lisp` — download an AutoCAD Script or AutoLISP file (hatch entities are skipped, see below)
+- `GET /projects/{id}/export?format=scr|lisp` — same, for a saved project
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -94,6 +97,7 @@ curl -X POST localhost:8000/projects -H 'content-type: application/json' \
   -d '{"name": "my-drawing"}'
 
 curl localhost:8000/drawings/current/render?format=svg -o drawing.svg
+curl localhost:8000/drawings/current/export?format=scr -o drawing.scr
 ```
 
 ## Run the MCP server
@@ -124,8 +128,16 @@ Configure via an optional `config.json` in the working directory, or
 `draw_rectangle`, `draw_text`, `draw_hatch`, `add_dimension`,
 `save_drawing`, `create_layer`, `process_command` (natural language),
 `get_current_drawing`, `clear_current_drawing`, `render_current_drawing`,
-`create_project`, `list_projects`, `get_project`, `snapshot_project`,
-`load_project`.
+`export_script`, `export_lisp`, `create_project`, `list_projects`,
+`get_project`, `snapshot_project`, `load_project`.
+
+`export_script`/`export_lisp` generate an AutoCAD Script (.scr) or
+AutoLISP (.lsp) file — the one path to real AutoCAD that needs neither
+Windows nor `pywin32`: run the script via AutoCAD's `SCRIPT` command, or
+load the LISP file via `APPLOAD`. **Hatch entities are skipped** (not
+guessed at — see `docs/architecture.md` Phase 8), and like the `autocad`
+backend, **the generated commands are unverified against a real AutoCAD
+install**.
 
 Every geometry tool argument matches the field names in
 `engine/geometry/primitives.py` directly (e.g. `start`/`end` for a line,
@@ -146,7 +158,7 @@ Briefly:
 - `dxf/` — headless backend (ezdxf); what the test suite runs against
 - `autocad/` — Windows COM backend for AutoCAD/GstarCAD/ZWCAD
 - `storage/` — `Project`/`Revision` models + file-based `ProjectStore` (one JSON document per project)
-- `export/` — `render_svg`/`render_png`: real, CAD-accurate rendering via ezdxf's drawing addon
+- `export/` — `render_svg`/`render_png` (real, CAD-accurate rendering via ezdxf's drawing addon) and `render_scr`/`render_lisp` (AutoCAD Script / AutoLISP generation, unverified)
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
@@ -166,10 +178,11 @@ Per the master platform vision, not built yet (see `docs/architecture.md`
 for why): plugin SDK; the dashboard sections that need a plugin SDK or
 richer UI first (Templates, Symbol Libraries, Execution Queue, Logs,
 Performance, Settings); multi-format import (PDF/image/sketch/Excel);
-symbol libraries and the ANSI/ISO/IEC standards knowledge base; DWG/LISP/SCR
-export (DXF, SVG, and PNG work now); non-AutoCAD-family backends (FreeCAD,
-Fusion 360, etc.); and true multi-document/multi-tenant project isolation.
-The `CADBackend` interface is designed so new backends can be added later
+symbol libraries and the ANSI/ISO/IEC standards knowledge base; DWG export
+and hatch support in .scr/.lsp (DXF, SVG, PNG, SCR, and LISP all work now
+for non-hatch geometry); non-AutoCAD-family backends (FreeCAD, Fusion 360,
+etc.); and true multi-document/multi-tenant project isolation. The
+`CADBackend` interface is designed so new backends can be added later
 without touching the planning/validation spine. MCP resources and prompts
 (`drawing://current`, the `cad-assistant` prompt) from the original repo
 were also not carried over as MCP-native resources — `get_current_drawing`

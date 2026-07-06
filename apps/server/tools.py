@@ -21,6 +21,7 @@ from engine.planner.planner import NonGeometryIntent, PlanningError
 from engine.validator.engine import ValidationReport
 from engine.validator.issue import Issue
 from export.renderer import render_svg
+from export.script import render_lisp, render_scr, unsupported_entities
 from nlp.fallback import FallbackParser
 from storage.store import ProjectNotFoundError
 
@@ -197,6 +198,27 @@ def _handle_render_current_drawing(arguments: Dict[str, Any], ctx: ServerContext
     except Exception as exc:  # noqa: BLE001 - rendering can fail in many ezdxf/Pillow-specific ways
         return {"success": False, "message": f"render failed: {exc}"}
     return {"success": True, "format": "svg", "svg": svg}
+
+
+def _export_current_drawing(ctx: ServerContext, renderer, format_name: str) -> Dict[str, Any]:
+    plan = DrawingPlan(operations=list(ctx.history))
+    skipped = unsupported_entities(plan)
+    result: Dict[str, Any] = {"success": True, "format": format_name, "script": renderer(plan)}
+    if skipped:
+        count = len(skipped)
+        result["warning"] = (
+            f"{count} entit{'y' if count == 1 else 'ies'} skipped "
+            f"(hatch cannot be reliably scripted): indices {skipped}"
+        )
+    return result
+
+
+def _handle_export_script(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    return _export_current_drawing(ctx, render_scr, "scr")
+
+
+def _handle_export_lisp(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    return _export_current_drawing(ctx, render_lisp, "lsp")
 
 
 def _handle_create_project(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
@@ -509,6 +531,18 @@ TOOL_REGISTRY: List[ToolSpec] = [
         "Render the current drawing history to a real, CAD-accurate SVG image",
         {"type": "object", "properties": {}},
         _handle_render_current_drawing,
+    ),
+    ToolSpec(
+        "export_script",
+        "Export the current drawing history as an AutoCAD Script (.scr); hatch entities are skipped",
+        {"type": "object", "properties": {}},
+        _handle_export_script,
+    ),
+    ToolSpec(
+        "export_lisp",
+        "Export the current drawing history as AutoLISP (.lsp) commands; hatch entities are skipped",
+        {"type": "object", "properties": {}},
+        _handle_export_lisp,
     ),
     ToolSpec(
         "create_project",

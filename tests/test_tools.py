@@ -27,6 +27,7 @@ def test_registry_has_expected_tools():
         "draw_rectangle", "draw_text", "draw_hatch", "add_dimension",
         "save_drawing", "create_layer", "process_command",
         "get_current_drawing", "clear_current_drawing", "render_current_drawing",
+        "export_script", "export_lisp",
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
     }
 
@@ -139,6 +140,31 @@ def test_render_current_drawing_returns_svg(ctx):
     assert result["success"] is True
     assert result["format"] == "svg"
     assert "<svg" in result["svg"]
+
+
+def test_export_script_tool(ctx):
+    TOOLS_BY_NAME["draw_line"].handler({"start": [0, 0], "end": [10, 10]}, ctx)
+    result = TOOLS_BY_NAME["export_script"].handler({}, ctx)
+    assert result["success"] is True
+    assert result["format"] == "scr"
+    assert "LINE" in result["script"]
+    assert "warning" not in result
+
+
+def test_export_lisp_tool(ctx):
+    TOOLS_BY_NAME["draw_line"].handler({"start": [0, 0], "end": [10, 10]}, ctx)
+    result = TOOLS_BY_NAME["export_lisp"].handler({}, ctx)
+    assert result["success"] is True
+    assert result["format"] == "lsp"
+    assert '(command "LINE"' in result["script"]
+
+
+def test_export_script_warns_on_skipped_hatch(ctx):
+    TOOLS_BY_NAME["draw_hatch"].handler({"points": [[0, 0], [10, 0], [10, 10]]}, ctx)
+    result = TOOLS_BY_NAME["export_script"].handler({}, ctx)
+    assert result["success"] is True
+    assert "warning" in result
+    assert "hatch" in result["warning"]
 
 
 def test_render_current_drawing_handles_empty_history(ctx):

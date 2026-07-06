@@ -292,6 +292,46 @@ rather than just the happy path:
   visibility entirely through inline `style.display` instead of the
   `hidden` attribute/property on either element.
 
+## Phase 8: AutoCAD Script and AutoLISP export
+
+The last output format from the master vision's list that's actually
+verifiable without a proprietary binary writer: `export/script.py` adds
+`.scr` and `.lsp` generation. Both share one model — for each entity, a
+"command block" (the sequence of command-line inputs exactly as if typed
+interactively into AutoCAD) — rendered two ways: `render_scr` joins the
+tokens with newlines, `render_lisp` wraps each block in one `(command
+...)` form. This is the one export path that needs neither `autocad`
+backend's `pywin32`/Windows/COM stack nor `dxf` backend's ezdxf: run the
+`.scr` via AutoCAD's `SCRIPT` command, or load the `.lsp` via `APPLOAD`,
+on any machine with AutoCAD installed, no COM automation required.
+
+**Hatch is deliberately unsupported here**, unlike everywhere else in the
+platform. The COM backend's hatch support (`AddHatch`) is a direct
+object-model call and reliable; scripting `-HATCH` means replaying a
+multi-step interactive prompt sequence that has changed across AutoCAD
+versions and depends on current dialog/settings state. There was no way to
+verify a guessed sequence in this environment, and a plausible-looking
+script that silently does the wrong thing is worse than clearly not
+supporting it. `unsupported_entities()` reports which plan entries were
+skipped so every layer (tool response, REST response, dashboard log) can
+surface that to the user rather than silently dropping content.
+
+New tools (`export_script`, `export_lisp`) and REST endpoints
+(`GET /drawings/current/export`, `GET /projects/{id}/export`,
+`?format=scr|lisp`, real `text/plain` downloads with a
+`Content-Disposition` header) follow the same pattern as Phase 7's
+render endpoints — including a `_get_project_or_404` helper factored out
+because this was the third endpoint pair needing the same project-lookup
+try/except. The dashboard's download buttons call the tool endpoint first
+(to log any hatch-skipped warning) before navigating to the download URL,
+since a file download needs to see response headers a `fetch()` result
+can log but a plain navigation is what actually makes the browser save it.
+
+**Unverified**, same caveat as `autocad.backend`: there is no AutoCAD in
+this environment to run the generated scripts against. The command
+sequences follow documented AutoCAD command-line prompt order; verify
+before relying on them.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -303,8 +343,8 @@ communicates nothing and just adds noise):
   Symbol Libraries, Execution Queue, Logs, Performance, Settings
 - Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
 - Symbol libraries / ANSI-ISO-IEC standards knowledge base
-- DWG/LISP/SCR export (DXF, SVG, and PNG now work; PDF would follow the
-  same `export/renderer.py` pattern via a PDF-capable ezdxf drawing backend)
+- DWG export and hatch support in `.scr`/`.lsp` (DXF, SVG, PNG, SCR, and
+  LISP all work now for non-hatch geometry)
 - FreeCAD/Fusion/SolidWorks/Revit backends (the `CADBackend` interface is
   designed so these can be added later as new adapters)
 - True multi-document/multi-tenant project isolation (see the Phase 6 note above)

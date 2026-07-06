@@ -23,9 +23,19 @@ from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME, issue_to_dict, resul
 from config import Settings
 from engine.geometry.primitives import DrawingPlan
 from export.renderer import render_png, render_svg
-from storage.store import ProjectNotFoundError
+from export.script import render_lisp, render_scr
+from storage.store import ProjectNotFoundError, ProjectStore
 
 DASHBOARD_STATIC_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "static"
+
+
+def _get_project_or_404(project_store: ProjectStore, project_id: str):
+    try:
+        return project_store.get(project_id)
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail=f"project '{project_id}' not found") from None
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _render_response(plan: DrawingPlan, image_format: str) -> Response:
@@ -35,6 +45,15 @@ def _render_response(plan: DrawingPlan, image_format: str) -> Response:
         return Response(content=render_png(plan), media_type="image/png")
     except RuntimeError as exc:
         raise HTTPException(status_code=501, detail=str(exc)) from exc
+
+
+def _export_response(plan: DrawingPlan, script_format: str) -> Response:
+    if script_format == "scr":
+        content, filename = render_scr(plan), "drawing.scr"
+    else:
+        content, filename = render_lisp(plan), "drawing.lsp"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return Response(content=content, media_type="text/plain", headers=headers)
 
 
 def create_app(ctx: ServerContext) -> FastAPI:
@@ -104,6 +123,15 @@ def create_app(ctx: ServerContext) -> FastAPI:
         plan = DrawingPlan(operations=list(ctx.history))
         return _render_response(plan, image_format)
 
+    @app.get("/drawings/current/export")
+    def export_current_drawing(
+        script_format: str = Query("scr", alias="format", pattern="^(scr|lisp)$"),
+    ) -> Response:
+        """Download an AutoCAD Script (.scr) or AutoLISP (.lsp) of the
+        current drawing. Hatch entities are skipped — see export/script.py."""
+        plan = DrawingPlan(operations=list(ctx.history))
+        return _export_response(plan, script_format)
+
     @app.get("/projects")
     def list_projects() -> Dict[str, Any]:
         return TOOLS_BY_NAME["list_projects"].handler({}, ctx)
@@ -134,13 +162,15 @@ def create_app(ctx: ServerContext) -> FastAPI:
     def render_project(
         project_id: str, image_format: str = Query("svg", alias="format", pattern="^(svg|png)$")
     ) -> Response:
-        try:
-            project = ctx.project_store.get(project_id)
-        except ProjectNotFoundError:
-            raise HTTPException(status_code=404, detail=f"project '{project_id}' not found") from None
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        project = _get_project_or_404(ctx.project_store, project_id)
         return _render_response(project.plan, image_format)
+
+    @app.get("/projects/{project_id}/export")
+    def export_project(
+        project_id: str, script_format: str = Query("scr", alias="format", pattern="^(scr|lisp)$")
+    ) -> Response:
+        project = _get_project_or_404(ctx.project_store, project_id)
+        return _export_response(project.plan, script_format)
 
     if DASHBOARD_STATIC_DIR.is_dir():
         app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")

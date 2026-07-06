@@ -223,3 +223,38 @@ def test_render_project(client):
 def test_render_unknown_project_returns_404(client):
     response = client.get("/projects/does-not-exist/render")
     assert response.status_code == 404
+
+
+def test_export_current_drawing_scr(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    response = client.get("/drawings/current/export")  # default format=scr
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
+    assert response.headers["content-disposition"] == 'attachment; filename="drawing.scr"'
+    assert "CIRCLE" in response.text
+
+
+def test_export_current_drawing_lisp(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    response = client.get("/drawings/current/export?format=lisp")
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == 'attachment; filename="drawing.lsp"'
+    assert '(command "CIRCLE"' in response.text
+
+
+def test_export_rejects_unknown_format(client):
+    response = client.get("/drawings/current/export?format=bogus")
+    assert response.status_code == 422
+
+
+def test_export_project(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    created = client.post("/projects", json={"name": "demo"}).json()
+    response = client.get(f"/projects/{created['project_id']}/export?format=lisp")
+    assert response.status_code == 200
+    assert "CIRCLE" in response.text
+
+
+def test_export_unknown_project_returns_404(client):
+    response = client.get("/projects/does-not-exist/export")
+    assert response.status_code == 404

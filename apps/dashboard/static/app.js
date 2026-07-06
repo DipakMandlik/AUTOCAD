@@ -182,6 +182,32 @@ function setupSaveAndClear() {
   });
 }
 
+function setupExportButtons() {
+  const log = document.getElementById("preview-log");
+
+  // Ask the tool endpoint first (JSON, so it can surface a "hatch was
+  // skipped" warning in the log) before navigating to the download
+  // endpoint — the download itself is a plain navigation, since the
+  // browser needs to see the Content-Disposition header to save the file.
+  async function exportAndDownload(toolName, queryFormat) {
+    try {
+      const result = await api(`/tools/${toolName}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: "{}",
+      });
+      logEntry(log, true, `export .${queryFormat === "lisp" ? "lsp" : queryFormat}`, result.warning || "ready");
+    } catch (err) {
+      logEntry(log, false, "export failed", err.message);
+      return;
+    }
+    window.location.href = `/drawings/current/export?format=${queryFormat}`;
+  }
+
+  document.getElementById("export-scr").addEventListener("click", () => exportAndDownload("export_script", "scr"));
+  document.getElementById("export-lisp").addEventListener("click", () => exportAndDownload("export_lisp", "lisp"));
+}
+
 // --- Projects ----------------------------------------------------------
 
 async function syncPreviewFromServer() {
@@ -428,6 +454,7 @@ async function init() {
   setupToolCaller();
   setupValidator();
   setupSaveAndClear();
+  setupExportButtons();
   setupProjects();
   setupRenderToggle();
 }
