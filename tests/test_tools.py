@@ -32,6 +32,7 @@ def test_registry_has_expected_tools():
         "list_symbols", "insert_symbol", "import_svg",
         "get_execution_log", "clear_execution_log", "get_performance_stats", "get_settings",
         "list_templates", "insert_title_block",
+        "enqueue_operation", "get_queue", "remove_queue_item", "run_queue", "clear_queue",
     }
 
 
@@ -455,3 +456,81 @@ def test_insert_title_block_unknown_template_fails_cleanly(ctx):
     result = TOOLS_BY_NAME["insert_title_block"].handler({"template_name": "not_real"}, ctx)
     assert result["success"] is False
     assert "not_real" in result["message"]
+
+
+def test_enqueue_operation_tool(ctx):
+    result = TOOLS_BY_NAME["enqueue_operation"].handler(
+        {"tool_name": "draw_circle", "arguments": {"center": [0, 0], "radius": 5}}, ctx
+    )
+    assert result["success"] is True
+    assert result["item"]["status"] == "queued"
+    assert len(ctx.execution_queue) == 1
+
+
+def test_enqueue_operation_unknown_tool_fails_cleanly(ctx):
+    result = TOOLS_BY_NAME["enqueue_operation"].handler({"tool_name": "not_a_real_tool"}, ctx)
+    assert result["success"] is False
+    assert len(ctx.execution_queue) == 0
+
+
+def test_get_queue_tool(ctx):
+    TOOLS_BY_NAME["enqueue_operation"].handler({"tool_name": "draw_circle", "arguments": {}}, ctx)
+    result = TOOLS_BY_NAME["get_queue"].handler({}, ctx)
+    assert result["success"] is True
+    assert len(result["items"]) == 1
+    assert result["items"][0]["tool"] == "draw_circle"
+
+
+def test_remove_queue_item_tool(ctx):
+    enqueued = TOOLS_BY_NAME["enqueue_operation"].handler({"tool_name": "draw_circle", "arguments": {}}, ctx)
+    item_id = enqueued["item"]["id"]
+    result = TOOLS_BY_NAME["remove_queue_item"].handler({"item_id": item_id}, ctx)
+    assert result["success"] is True
+    assert len(ctx.execution_queue) == 0
+
+
+def test_remove_queue_item_unknown_id_fails_cleanly(ctx):
+    result = TOOLS_BY_NAME["remove_queue_item"].handler({"item_id": 999}, ctx)
+    assert result["success"] is False
+
+
+def test_run_queue_partial_failure_does_not_block_other_items(ctx):
+    TOOLS_BY_NAME["enqueue_operation"].handler(
+        {"tool_name": "draw_circle", "arguments": {"center": [0, 0], "radius": 5}}, ctx
+    )
+    TOOLS_BY_NAME["enqueue_operation"].handler(
+        {"tool_name": "draw_circle", "arguments": {"center": [0, 0], "radius": -5}}, ctx
+    )
+    result = TOOLS_BY_NAME["run_queue"].handler({}, ctx)
+    assert result["success"] is True
+    statuses = [r["status"] for r in result["results"]]
+    assert statuses == ["succeeded", "failed"]
+    assert "1 succeeded, 1 failed" in result["message"]
+    # both items reflect their outcome afterward, not just in the run response
+    queue = TOOLS_BY_NAME["get_queue"].handler({}, ctx)
+    assert [i["status"] for i in queue["items"]] == ["succeeded", "failed"]
+
+
+def test_run_queue_skips_already_run_items(ctx):
+    TOOLS_BY_NAME["enqueue_operation"].handler(
+        {"tool_name": "draw_circle", "arguments": {"center": [0, 0], "radius": 5}}, ctx
+    )
+    TOOLS_BY_NAME["run_queue"].handler({}, ctx)
+    second_run = TOOLS_BY_NAME["run_queue"].handler({}, ctx)
+    assert second_run["results"] == []
+    assert "ran 0 item(s)" in second_run["message"]
+
+
+def test_run_queue_unknown_tool_fails_that_item_only(ctx):
+    ctx.execution_queue.enqueue("not_a_real_tool", {})
+    result = TOOLS_BY_NAME["run_queue"].handler({}, ctx)
+    assert result["results"][0]["status"] == "failed"
+
+
+def test_clear_queue_tool(ctx):
+    TOOLS_BY_NAME["enqueue_operation"].handler({"tool_name": "draw_circle", "arguments": {}}, ctx)
+    TOOLS_BY_NAME["enqueue_operation"].handler({"tool_name": "draw_line", "arguments": {}}, ctx)
+    result = TOOLS_BY_NAME["clear_queue"].handler({}, ctx)
+    assert result["success"] is True
+    assert "2" in result["message"]
+    assert len(ctx.execution_queue) == 0

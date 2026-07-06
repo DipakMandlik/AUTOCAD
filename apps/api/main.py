@@ -234,6 +234,26 @@ def create_app(ctx: ServerContext) -> FastAPI:
         plan = DrawingPlan(operations=entities)
         return _render_response(plan, image_format)
 
+    @app.get("/queue")
+    def get_queue() -> Dict[str, Any]:
+        return TOOLS_BY_NAME["get_queue"].handler({}, ctx)
+
+    @app.post("/queue")
+    def enqueue_operation(payload: Dict[str, Any]) -> Dict[str, Any]:
+        return TOOLS_BY_NAME["enqueue_operation"].handler(payload, ctx)
+
+    @app.delete("/queue/{item_id}")
+    def remove_queue_item(item_id: int) -> Dict[str, Any]:
+        return TOOLS_BY_NAME["remove_queue_item"].handler({"item_id": item_id}, ctx)
+
+    @app.post("/queue/run")
+    def run_queue() -> Dict[str, Any]:
+        return TOOLS_BY_NAME["run_queue"].handler({}, ctx)
+
+    @app.post("/queue/clear")
+    def clear_queue() -> Dict[str, Any]:
+        return TOOLS_BY_NAME["clear_queue"].handler({}, ctx)
+
     if DASHBOARD_STATIC_DIR.is_dir():
         app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")
 

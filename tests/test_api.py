@@ -395,3 +395,43 @@ def test_insert_title_block_via_rest(client):
     body = response.json()
     assert body["success"] is True
     assert len(body["results"]) == 6  # border + box + 3 dividers + 1 text field
+
+
+def test_enqueue_and_get_queue_via_rest(client):
+    response = client.post(
+        "/queue", json={"tool_name": "draw_circle", "arguments": {"center": [0, 0], "radius": 5}}
+    )
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+
+    queue = client.get("/queue")
+    assert queue.status_code == 200
+    assert len(queue.json()["items"]) == 1
+
+
+def test_run_queue_via_rest_tolerates_partial_failure(client):
+    client.post("/queue", json={"tool_name": "draw_circle", "arguments": {"center": [0, 0], "radius": 5}})
+    client.post("/queue", json={"tool_name": "draw_circle", "arguments": {"center": [0, 0], "radius": -5}})
+
+    response = client.post("/queue/run")
+    assert response.status_code == 200
+    body = response.json()
+    assert [r["status"] for r in body["results"]] == ["succeeded", "failed"]
+
+
+def test_remove_queue_item_via_rest(client):
+    enqueue_response = client.post("/queue", json={"tool_name": "draw_circle", "arguments": {}})
+    item_id = enqueue_response.json()["item"]["id"]
+
+    response = client.delete(f"/queue/{item_id}")
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert client.get("/queue").json()["items"] == []
+
+
+def test_clear_queue_via_rest(client):
+    client.post("/queue", json={"tool_name": "draw_circle", "arguments": {}})
+    response = client.post("/queue/clear")
+    assert response.status_code == 200
+    assert response.json()["success"] is True
+    assert client.get("/queue").json()["items"] == []

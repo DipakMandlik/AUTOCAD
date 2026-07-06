@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 260 tests, all run headlessly against the DXF backend
+pytest -v      # 281 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -87,13 +87,15 @@ uvicorn apps.api.main:app --reload
 ```
 
 Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
-tool explorer with live schemas, a Templates panel for inserting sheet
-borders/title blocks, an SVG drawing preview with an accurate-render
-toggle, .scr/.lsp download buttons, a validate-only dry-run panel, a
-Projects panel for saving/loading drawings, a Logs panel showing every
-tool call this session, a Performance panel aggregating per-tool call
-counts/timing from those same logs, and a read-only Settings panel
-showing the effective runtime configuration), or use the API directly:
+tool explorer with live schemas and an "Enqueue instead" option, a
+Templates panel for inserting sheet borders/title blocks, an SVG drawing
+preview with an accurate-render toggle, .scr/.lsp download buttons, a
+validate-only dry-run panel, a Projects panel for saving/loading
+drawings, an Execution Queue panel for batching tool calls with
+per-item pass/fail, a Logs panel showing every tool call this session, a
+Performance panel aggregating per-tool call counts/timing from those
+same logs, and a read-only Settings panel showing the effective runtime
+configuration), or use the API directly:
 
 - `GET /health` — status + which backend is active
 - `GET /tools` — list every tool's name/description/JSON schema
@@ -116,6 +118,11 @@ showing the effective runtime configuration), or use the API directly:
 - `GET /settings` — the effective runtime configuration this process resolved at startup (read-only)
 - `GET /templates` — list the available drawing-sheet templates (name/description/width/height)
 - `GET /templates/{name}/preview?format=svg|png` — render a template with sample field values, for the dashboard's template grid
+- `GET /queue` — list every queued item and its status
+- `POST /queue` — enqueue a tool call (`{"tool_name": ..., "arguments": {...}}`) without running it
+- `DELETE /queue/{item_id}` — remove a not-yet-run item
+- `POST /queue/run` — run every still-queued item in order; one item's failure doesn't stop the rest
+- `POST /queue/clear` — remove every item from the queue, run or not
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -166,7 +173,20 @@ Configure via an optional `config.json` in the working directory, or
 `get_project`, `snapshot_project`, `load_project`, `list_symbols`,
 `insert_symbol`, `import_svg`, `get_execution_log`, `clear_execution_log`,
 `get_performance_stats`, `get_settings`, `list_templates`,
-`insert_title_block`.
+`insert_title_block`, `enqueue_operation`, `get_queue`,
+`remove_queue_item`, `run_queue`, `clear_queue`.
+
+`enqueue_operation`/`run_queue` implement a deferred multi-tool queue:
+enqueue any tool call by name without running it, inspect or remove
+queued items, then `run_queue` executes every still-queued item in
+order via the same tool handlers either transport uses — crucially, one
+item failing does **not** stop the rest, unlike `/drawings/execute`'s
+atomic validate-or-nothing `DrawingPlan`. Already-run items are skipped
+on a later `run_queue` call, so re-running is safe. This is not real
+concurrent job processing: running the queue executes items
+synchronously, one after another, in the same request — no background
+worker, no persistence across a restart (see `docs/architecture.md`
+Phase 16).
 
 `insert_title_block` inserts a sheet border + title block (`a4_landscape`,
 `a3_landscape`, `letter_landscape`; see `list_templates`), with optional
@@ -248,6 +268,7 @@ Briefly:
 - `imports/` — `svg_import.py`, a constrained SVG-to-`DrawingPlan` parser; the `import_svg` tool sits on top
 - `templates/` — parametrized drawing-sheet templates (border + title block); `insert_title_block`/`list_templates` tools sit on top
 - `apps/execution_log.py` — bounded, in-memory tool-call audit trail backing the dashboard's Logs panel (`get_execution_log`/`clear_execution_log`) and Performance panel (`get_performance_stats`)
+- `apps/execution_queue.py` — deferred multi-tool queue backing the dashboard's Execution Queue panel and `enqueue_operation`/`get_queue`/`remove_queue_item`/`run_queue`/`clear_queue`
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
@@ -264,15 +285,16 @@ this pass attempted.
 ## What's deferred
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
-for why): the "Execution Queue" dashboard section (Templates, Logs,
-Performance, and Settings now exist, see "Available tools"/"REST"
-above, though Logs is a flat recent-calls list rather than a
-queryable/filterable one, Performance aggregates only the same bounded
-in-memory window rather than being a true cumulative historical metric,
-Settings is read-only with no live-editable API, Templates is one
-starter layout — a title block — not a general reusable-fragment system,
-and neither Logs nor Performance covers plugin-contributed tool calls);
-multi-format
+for why). All of the master vision's originally-named dashboard sections
+now exist in some form (see "Available tools"/"REST" above for each) —
+Logs is a flat recent-calls list rather than queryable/filterable,
+Performance aggregates only the same bounded in-memory window rather
+than a true cumulative historical metric, Settings is read-only with no
+live-editable API, Templates is one starter layout (a title block)
+rather than a general reusable-fragment system, Execution Queue runs
+items synchronously in-request rather than via a real background
+worker, and neither Logs nor Performance covers plugin-contributed tool
+calls. Still not built: multi-format
 import beyond SVG (PDF/image/sketch/Excel — these need OCR/ML or
 heavyweight parsing this sandbox can't install or verify; `import_svg`,
 see "Available tools" above, covers plain, unstyled, ungrouped SVG only —

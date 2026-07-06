@@ -498,6 +498,73 @@ def _handle_insert_title_block(arguments: Dict[str, Any], ctx: ServerContext) ->
     }
 
 
+def _queue_item_to_dict(item) -> Dict[str, Any]:
+    return {
+        "id": item.id,
+        "tool": item.tool,
+        "arguments": item.arguments,
+        "enqueued_at": item.enqueued_at,
+        "status": item.status,
+        "result": item.result,
+    }
+
+
+def _handle_enqueue_operation(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    tool_name = arguments.get("tool_name")
+    if tool_name not in TOOLS_BY_NAME:
+        return {"success": False, "message": f"unknown tool {tool_name!r}"}
+    tool_arguments = arguments.get("arguments") or {}
+    item = ctx.execution_queue.enqueue(tool_name, tool_arguments)
+    return {
+        "success": True,
+        "message": f"enqueued item {item.id} ({tool_name})",
+        "item": _queue_item_to_dict(item),
+    }
+
+
+def _handle_get_queue(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    return {"success": True, "items": [_queue_item_to_dict(i) for i in ctx.execution_queue.items()]}
+
+
+def _handle_remove_queue_item(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    item_id = arguments.get("item_id")
+    removed = ctx.execution_queue.remove(item_id)
+    message = f"removed item {item_id}" if removed else f"no queued item with id {item_id}"
+    return {"success": removed, "message": message}
+
+
+def _handle_run_queue(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    """Run every still-queued item in order. Each item runs independently
+    — a failure doesn't stop the rest, unlike run_pipeline's atomic
+    validate-or-nothing DrawingPlan — since the whole point of a queue is
+    tolerating partial failure across a batch of otherwise-unrelated tool
+    calls."""
+    results = []
+    for item in ctx.execution_queue.items():
+        if item.status != "queued":
+            continue
+        tool = TOOLS_BY_NAME.get(item.tool)
+        if tool is None:
+            item.result = {"success": False, "message": f"unknown tool {item.tool!r}"}
+        else:
+            item.result = tool.handler(item.arguments, ctx)
+        item.status = "succeeded" if item.result.get("success") else "failed"
+        results.append(_queue_item_to_dict(item))
+
+    succeeded = sum(1 for r in results if r["status"] == "succeeded")
+    failed = len(results) - succeeded
+    return {
+        "success": True,
+        "message": f"ran {len(results)} item(s): {succeeded} succeeded, {failed} failed",
+        "results": results,
+    }
+
+
+def _handle_clear_queue(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    count = ctx.execution_queue.clear()
+    return {"success": True, "message": f"cleared {count} queue item(s)"}
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -872,6 +939,47 @@ TOOL_REGISTRY: List[ToolSpec] = [
             "required": ["template_name"],
         },
         _handle_insert_title_block,
+    ),
+    ToolSpec(
+        "enqueue_operation",
+        "Enqueue a tool call to run later via run_queue, without running it now",
+        {
+            "type": "object",
+            "properties": {
+                "tool_name": {"type": "string", "description": "name of a registered tool (see GET /tools)"},
+                "arguments": {"type": "object", "description": "arguments for that tool (optional)"},
+            },
+            "required": ["tool_name"],
+        },
+        _handle_enqueue_operation,
+    ),
+    ToolSpec(
+        "get_queue",
+        "List every queued item and its status (queued/succeeded/failed)",
+        {"type": "object", "properties": {}},
+        _handle_get_queue,
+    ),
+    ToolSpec(
+        "remove_queue_item",
+        "Remove a not-yet-run item from the queue by id",
+        {
+            "type": "object",
+            "properties": {"item_id": {"type": "integer", "description": "queue item id, see get_queue"}},
+            "required": ["item_id"],
+        },
+        _handle_remove_queue_item,
+    ),
+    ToolSpec(
+        "run_queue",
+        "Run every still-queued item in order; one item's failure doesn't stop the rest",
+        {"type": "object", "properties": {}},
+        _handle_run_queue,
+    ),
+    ToolSpec(
+        "clear_queue",
+        "Remove every item from the queue, run or not",
+        {"type": "object", "properties": {}},
+        _handle_clear_queue,
     ),
 ]
 

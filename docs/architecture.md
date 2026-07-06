@@ -675,20 +675,71 @@ have muddied both.
   Playwright, including reproducing and then confirming the fix for the
   origin bug above.
 
+## Phase 16: Execution Queue (dashboard "Execution Queue" section)
+
+The last of the master vision's dashboard sections. Genuinely distinct
+from `/drawings/execute` (Phase 4's atomic, single-`DrawingPlan`,
+validate-or-nothing batch execute) rather than a thin wrapper around it:
+a queue holds a sequence of *independent tool calls* — not necessarily
+geometry at all, could be a `create_layer` then a few `draw_*` calls then
+a `save_drawing` — enqueued without running, inspectable and
+individually removable, then run as a batch where **one item's failure
+doesn't stop the rest**. That partial-failure tolerance is the actual
+feature; without it this would just be `/drawings/execute` with extra
+steps.
+
+- **`apps/execution_queue.py`**: `ExecutionQueue` is a plain ordered list
+  of `QueueItem` (id, tool, arguments, enqueued_at, status, result).
+  `enqueue()`/`items()`/`get()`/`remove()`/`clear()` — no execution logic
+  here at all; this module only holds state, same separation `history`
+  and `execution_log` keep between "data" and "what acts on it."
+- **`run_queue`'s actual behavior**: iterates every item still in
+  `"queued"` status, looks the tool up in `TOOLS_BY_NAME`, calls
+  `tool.handler(item.arguments, ctx)` — the same wrapped handler either
+  transport calls — and records `succeeded`/`failed` plus the tool's own
+  result on the item itself, continuing regardless of that item's
+  outcome. Already-run items are skipped on a second `run_queue` call
+  (their status is no longer `"queued"`), so re-running is safe and
+  idempotent rather than re-executing everything. Because this reuses the
+  already-wrapped `tool.handler`, every queued tool call that actually
+  runs is *also* recorded in `execution_log`/visible in `Performance` —
+  no separate logging path needed.
+- **5 tools**: `enqueue_operation`, `get_queue`, `remove_queue_item`,
+  `run_queue`, `clear_queue` — REST sugar at `GET/POST /queue`,
+  `DELETE /queue/{id}`, `POST /queue/run`, `POST /queue/clear`.
+- **Scope, stated plainly**: this is *not* real concurrent job
+  processing. "Running the queue" executes items synchronously, one after
+  another, inside the same HTTP request/MCP tool call — there is no
+  background worker, no parallelism, no persistence across a restart.
+  For a single-backend-document, single-process platform (see the Phase
+  6 persistence-scope note), that is an honest reflection of what this
+  system can actually do, not a simplification of some larger queuing
+  system that was cut for time.
+- **Dashboard**: an "Enqueue instead" button added next to the existing
+  "Call tool" button in the Tools panel (same tool-select/args, one new
+  request path), plus a new "Execution Queue" panel listing items
+  color-coded by status with a per-item Remove button (shown only while
+  still queued) and Run Queue/Clear controls. Verified live via
+  Playwright: enqueuing a valid `draw_circle` and an invalid one (negative
+  radius), running the queue, and confirming the first item drew into the
+  live preview while the second showed its real validation error and
+  neither blocked the other; then confirmed Remove and Clear.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
 placeholder directories were created for them (an empty `dashboard`
-section folder communicates nothing and just adds noise):
+section folder communicates nothing and just adds noise). All of the
+master vision's originally-named dashboard sections now exist in some
+form (Phases 12–16) — see each phase's scope-boundary note above for
+what's still shallow about them: Logs is a flat recent-calls list rather
+than queryable/filterable, Performance aggregates only the same bounded
+in-memory window rather than a true cumulative historical metric,
+Settings is read-only with no live-editable API, Templates is one
+starter layout (a title block) rather than a general reusable-fragment
+system, and Execution Queue runs items synchronously in-request rather
+than via a real background worker.
 
-- The "Execution Queue" dashboard section (Templates, Logs, Performance,
-  and Settings now exist — Phases 12–15 — though Logs is a flat
-  recent-calls list rather than a queryable/filterable one, Performance
-  aggregates only the same bounded in-memory window rather than a true
-  cumulative historical metric, Settings is read-only with no
-  live-editable API, and Templates is one starter layout — a title block
-  — not a general template system for arbitrary reusable drawing
-  fragments)
 - Multi-format import beyond SVG: PDF, raster image, hand sketch,
   Excel/CSV, flowcharts — these need OCR/ML or heavyweight parsing this
   sandbox can't install or verify (Phase 11 covers plain, unstyled,

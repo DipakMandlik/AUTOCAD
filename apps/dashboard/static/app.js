@@ -107,27 +107,48 @@ function setupChat() {
   });
 }
 
+function readToolAndArgs(log) {
+  const name = document.getElementById("tool-select").value;
+  try {
+    const args = JSON.parse(document.getElementById("tool-args").value || "{}");
+    return { name, args };
+  } catch (err) {
+    logEntry(log, false, "invalid JSON arguments", err.message);
+    return null;
+  }
+}
+
 function setupToolCaller() {
-  const button = document.getElementById("tool-call");
   const log = document.getElementById("tool-log");
-  button.addEventListener("click", async () => {
-    const name = document.getElementById("tool-select").value;
-    let args;
+
+  document.getElementById("tool-call").addEventListener("click", async () => {
+    const parsed = readToolAndArgs(log);
+    if (!parsed) return;
     try {
-      args = JSON.parse(document.getElementById("tool-args").value || "{}");
-    } catch (err) {
-      logEntry(log, false, "invalid JSON arguments", err.message);
-      return;
-    }
-    try {
-      const result = await api(`/tools/${name}`, {
+      const result = await api(`/tools/${parsed.name}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(args),
+        body: JSON.stringify(parsed.args),
       });
-      handleToolResult(result, log, name);
+      handleToolResult(result, log, parsed.name);
     } catch (err) {
       logEntry(log, false, "request failed", err.message);
+    }
+  });
+
+  document.getElementById("tool-enqueue").addEventListener("click", async () => {
+    const parsed = readToolAndArgs(log);
+    if (!parsed) return;
+    try {
+      const result = await api("/queue", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ tool_name: parsed.name, arguments: parsed.args }),
+      });
+      logEntry(log, result.success, result.message, "");
+      refreshQueue();
+    } catch (err) {
+      logEntry(log, false, "enqueue failed", err.message);
     }
   });
 }
@@ -310,6 +331,62 @@ function setupTemplates() {
     } catch (err) {
       logEntry(log, false, "insert failed", err.message);
     }
+  });
+}
+
+// --- Execution Queue -------------------------------------------------
+// Deferred tool calls: "Enqueue instead" in the Tools panel above adds
+// here without running; Run Queue then runs everything still queued, in
+// order, tolerating individual failures (unlike a single atomic plan).
+
+function renderQueue(items) {
+  const container = document.getElementById("queue-list");
+  container.innerHTML = "";
+  if (!items.length) {
+    container.innerHTML = '<div class="entry">queue is empty</div>';
+    return;
+  }
+  for (const item of items) {
+    const statusClass = item.status === "failed" ? "failure" : item.status === "succeeded" ? "success" : "";
+    const el = document.createElement("div");
+    el.className = `entry ${statusClass}`;
+    const message = item.result ? item.result.message || "" : "";
+    const removeButton =
+      item.status === "queued" ? `<button data-remove="${item.id}" class="secondary">Remove</button>` : "";
+    el.innerHTML = `<div>#${item.id} ${item.tool} — ${item.status}</div>
+      <div class="meta">${message}</div>${removeButton}`;
+    container.appendChild(el);
+  }
+}
+
+async function refreshQueue() {
+  try {
+    renderQueue((await api("/queue")).items);
+  } catch {
+    // diagnostic only — fail silently, same as refreshLogs()
+  }
+}
+
+function setupQueue() {
+  document.getElementById("queue-refresh").addEventListener("click", refreshQueue);
+
+  document.getElementById("queue-run").addEventListener("click", async () => {
+    await api("/queue/run", { method: "POST" });
+    await refreshQueue();
+    await syncPreviewFromServer();
+    refreshLogs();
+  });
+
+  document.getElementById("queue-clear").addEventListener("click", async () => {
+    await api("/queue/clear", { method: "POST" });
+    await refreshQueue();
+  });
+
+  document.getElementById("queue-list").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-remove]");
+    if (!button) return;
+    await api(`/queue/${button.dataset.remove}`, { method: "DELETE" });
+    await refreshQueue();
   });
 }
 
@@ -677,6 +754,8 @@ async function init() {
   setupSvgImport();
   setupProjects();
   setupRenderToggle();
+  setupQueue();
+  await refreshQueue();
   setupLogs();
   await refreshLogs();
 }

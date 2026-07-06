@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import List
 
 from apps.execution_log import ExecutionLog
+from apps.execution_queue import ExecutionQueue
 from cad.backend import CADBackend
 from cad.registry import get_backend
 from config import Settings
@@ -44,6 +45,11 @@ class ServerContext:
     # cad.backend can't change without restarting anyway, since the
     # backend instance above is already constructed from it).
     settings: Settings = field(default_factory=Settings)
+    # Deferred tool calls the dashboard's "Execution Queue" section reads
+    # from and drives — enqueued but not yet run, or run with per-item
+    # success/failure recorded. Process-lifetime only; see
+    # apps/execution_queue.py.
+    execution_queue: ExecutionQueue = field(default_factory=ExecutionQueue)
 
 
 def build_context(settings: Settings) -> ServerContext:

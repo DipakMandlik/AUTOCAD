@@ -30,8 +30,25 @@
         <select id="tool-select"></select>
         <div class="tool-schema" id="tool-schema"></div>
         <textarea id="tool-args" rows="4" spellcheck="false">{}</textarea>
-        <button id="tool-call">Call tool</button>
+        <div class="log-controls">
+          <button id="tool-call">Call tool</button>
+          <button id="tool-enqueue" class="secondary">Enqueue instead</button>
+        </div>
         <div class="log" id="tool-log"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Execution Queue</h2>
+        <p class="hint">
+          Tool calls enqueued above run later, in order, when you click Run
+          Queue — one item failing doesn't stop the rest.
+        </p>
+        <div class="log-controls">
+          <button id="queue-refresh" class="secondary">Refresh</button>
+          <button id="queue-run">Run Queue</button>
+          <button id="queue-clear" class="secondary">Clear</button>
+        </div>
+        <div class="log" id="queue-list"></div>
       </div>
 
       <div class="panel">
