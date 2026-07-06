@@ -100,7 +100,7 @@ def run_pipeline(
 
 def execute_plan(plan: DrawingPlan, ctx: ServerContext) -> Dict[str, Any]:
     """MCP-facing wrapper around run_pipeline for single-operation plans."""
-    _plan, report, applied_fixes, result = run_pipeline(plan, ctx)
+    fixed_plan, report, applied_fixes, result = run_pipeline(plan, ctx)
     if result is None:
         return {
             "success": False,
@@ -109,11 +109,16 @@ def execute_plan(plan: DrawingPlan, ctx: ServerContext) -> Dict[str, Any]:
         }
 
     entity_result = result.results[0] if result.results else None
+    # Echo back the (possibly autofixed) entity's own data, not just its
+    # handle — a client that only sent natural language to process_command
+    # has no other way to know what geometry actually got drawn.
+    entity = fixed_plan.operations[0].model_dump() if fixed_plan.operations else None
     return {
         "success": result.success,
         "message": "drawn" if result.success else "failed to draw entity",
         "handle": entity_result.handle if entity_result else None,
         "error": entity_result.error if entity_result and not entity_result.success else None,
+        "entity": entity,
         "warnings": [issue_to_dict(i) for i in report.warnings],
         "autofixed": [issue_to_dict(i) for i in applied_fixes],
     }

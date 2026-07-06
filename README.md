@@ -13,11 +13,12 @@ as a ground-up redesign. See:
 
 ## Current scope
 
-This is the **core framework MVP**: a fully working, tested planning →
-geometry → validation → execution pipeline with a headless backend. It is
-one phase of a larger roadmap (see "What's deferred" below) — deliberately
-scoped down rather than a shallow pass over every feature in the platform
-vision.
+The core is a fully working, tested planning → geometry → validation →
+execution pipeline with a headless backend, exposed over MCP, a REST API,
+and a small web dashboard. This is several phases into a larger roadmap
+(see "What's deferred" below) — each phase deliberately scoped to what's
+genuinely usable and testable now, rather than a shallow pass over every
+feature in the platform vision.
 
 ```
 MCP tool call (typed args)         process_command (natural language)
@@ -54,15 +55,19 @@ pip install -e ".[autocad]"      # adds pywin32, Windows only
 ## Run the tests
 
 ```bash
-pytest -v      # 69 tests, all run headlessly against the DXF backend
+pytest -v      # 71 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
-## Run the REST API
+## Run the REST API + dashboard
 
 ```bash
 uvicorn apps.api.main:app --reload
 ```
+
+Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
+tool explorer with live schemas, an SVG drawing preview, and a
+validate-only dry-run panel), or use the API directly:
 
 - `GET /health` — status + which backend is active
 - `GET /tools` — list every tool's name/description/JSON schema
@@ -124,19 +129,22 @@ Briefly:
 - `cad/` — the `CADBackend` interface and backend registry
 - `dxf/` — headless backend (ezdxf); what the test suite runs against
 - `autocad/` — Windows COM backend for AutoCAD/GstarCAD/ZWCAD
-- `apps/context.py` — shared `ServerContext` wiring used by both apps below
+- `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
+- `apps/dashboard/` — static web UI served by the REST API at `/dashboard`
 - `config.py` — single validated settings source
 
 ## What's deferred
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
-for why): dashboard, plugin SDK, multi-format import (PDF/image/sketch/
-Excel), symbol libraries and the ANSI/ISO/IEC standards knowledge base,
-DWG/SVG/PDF/LISP/SCR export, non-AutoCAD-family backends (FreeCAD, Fusion
-360, etc.), and a persistence/project/revision-history layer. The
-`CADBackend` interface is designed so new backends can be added later
-without touching the planning/validation spine. MCP resources and prompts
-(`drawing://current`, the `cad-assistant` prompt) from the original repo
-were also not carried over.
+for why): plugin SDK; the dashboard sections that need persistence or
+plugins first (Projects, Templates, Symbol Libraries, Revisions, History,
+Execution Queue, Logs, Performance, Settings); multi-format import
+(PDF/image/sketch/Excel); symbol libraries and the ANSI/ISO/IEC standards
+knowledge base; DWG/SVG/PDF/LISP/SCR export; non-AutoCAD-family backends
+(FreeCAD, Fusion 360, etc.); and a persistence/project/revision-history
+layer. The `CADBackend` interface is designed so new backends can be added
+later without touching the planning/validation spine. MCP resources and
+prompts (`drawing://current`, the `cad-assistant` prompt) from the
+original repo were also not carried over.

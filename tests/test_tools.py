@@ -37,6 +37,20 @@ def test_draw_line_tool_success(ctx):
     result = TOOLS_BY_NAME["draw_line"].handler({"start": [0, 0], "end": [10, 10]}, ctx)
     assert result["success"]
     assert result["handle"]
+    # entity/model_dump() returns raw Python values (tuples), not yet
+    # JSON-serialized — the wire format (MCP json.dumps / FastAPI) turns
+    # these into arrays for the client.
+    assert result["entity"]["type"] == "line"
+    assert result["entity"]["start"] == (0.0, 0.0, 0.0)
+
+
+def test_process_command_result_includes_parsed_entity(ctx):
+    # a client that only sent natural language has no other way to know
+    # what geometry the NLP parser actually resolved it to.
+    result = TOOLS_BY_NAME["process_command"].handler({"command": "draw a circle at (5,5) radius 20"}, ctx)
+    assert result["entity"]["type"] == "circle"
+    assert result["entity"]["center"] == (5.0, 5.0, 0.0)
+    assert result["entity"]["radius"] == 20.0
 
 
 def test_draw_line_tool_resolves_color_name(ctx):

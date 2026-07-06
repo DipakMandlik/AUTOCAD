@@ -1,0 +1,170 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0f1420;
+  --panel: #161d2e;
+  --border: #2a3450;
+  --text: #e6ebf5;
+  --muted: #8b96b3;
+  --accent: #4fd1c5;
+  --accent-strong: #2fb8ab;
+  --error: #f87171;
+  --warning: #facc15;
+  --ok: #4ade80;
+  --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f6fb;
+    --panel: #ffffff;
+    --border: #d7deec;
+    --text: #131a2a;
+    --muted: #5b6787;
+    --accent: #0f9488;
+    --accent-strong: #0b746b;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.topbar h1 { font-size: 1.1rem; margin: 0; letter-spacing: 0.02em; }
+
+.status {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.status.ok { color: var(--ok); border-color: var(--ok); }
+.status.error { color: var(--error); border-color: var(--error); }
+
+.layout {
+  display: grid;
+  grid-template-columns: minmax(320px, 420px) 1fr;
+  gap: 1rem;
+  padding: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+}
+
+.col { display: flex; flex-direction: column; gap: 1rem; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.panel h2 { margin: 0 0 0.25rem; font-size: 0.95rem; }
+.hint { margin: 0 0 0.6rem; color: var(--muted); font-size: 0.8rem; }
+.hint code { font-family: var(--mono); }
+
+input[type="text"], select, textarea {
+  width: 100%;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 0.45rem 0.6rem;
+  font-size: 0.85rem;
+  font-family: var(--mono);
+}
+
+textarea { resize: vertical; margin-top: 0.5rem; }
+
+button {
+  background: var(--accent);
+  border: none;
+  color: #04201d;
+  font-weight: 600;
+  padding: 0.45rem 0.9rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+button:hover { background: var(--accent-strong); }
+
+#chat-form { display: flex; gap: 0.5rem; }
+#chat-form input { flex: 1; }
+
+#tool-select { margin-bottom: 0.5rem; }
+.tool-schema {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--muted);
+  white-space: pre-wrap;
+  max-height: 6rem;
+  overflow-y: auto;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 0.4rem;
+  margin-bottom: 0.4rem;
+}
+
+#tool-call, #validate-call, #save-call, #clear-preview { margin-top: 0.5rem; }
+
+.log {
+  margin-top: 0.6rem;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+.log .entry { padding: 0.35rem 0; border-top: 1px solid var(--border); }
+.log .entry:first-child { border-top: none; }
+.log .entry.success { color: var(--ok); }
+.log .entry.failure { color: var(--error); }
+.log .entry .meta { color: var(--muted); }
+
+.panel-preview { min-height: 480px; display: flex; flex-direction: column; }
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.preview-actions { display: flex; gap: 0.5rem; }
+.preview-actions input { width: 12rem; }
+
+#canvas {
+  flex: 1;
+  min-height: 380px;
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: repeating-linear-gradient(
+      0deg, transparent, transparent 9px, color-mix(in srgb, var(--border) 40%, transparent) 9px, color-mix(in srgb, var(--border) 40%, transparent) 10px
+    ),
+    repeating-linear-gradient(
+      90deg, transparent, transparent 9px, color-mix(in srgb, var(--border) 40%, transparent) 9px, color-mix(in srgb, var(--border) 40%, transparent) 10px
+    );
+}
+
+#canvas .entity-line, #canvas .entity-poly { stroke: var(--accent); stroke-width: 0.4; fill: none; }
+#canvas .entity-circle, #canvas .entity-arc, #canvas .entity-ellipse { stroke: var(--accent); stroke-width: 0.4; fill: none; }
+#canvas .entity-hatch { fill: color-mix(in srgb, var(--accent) 35%, transparent); stroke: var(--accent); stroke-width: 0.2; }
+#canvas .entity-text { fill: var(--text); font-size: 3px; font-family: var(--mono); }
+#canvas .entity-dimension { stroke: var(--muted); stroke-width: 0.25; }

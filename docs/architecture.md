@@ -158,13 +158,59 @@ drawn. Fixed by gating on "any autofixable issue is present" instead —
 caught before it shipped, by the second transport's tests exercising a
 multi-entity path the first transport's tests hadn't.
 
+## Phase 5: Dashboard
+
+A dashboard needs the REST API to already exist, which is why it followed
+rather than preceded Phase 4. Scope was deliberately narrowed from the
+master vision's thirteen-section dashboard (Projects, Templates, Symbol
+Libraries, Drawing Explorer, Validation, Revisions, History, AI Chat,
+Execution Queue, Logs, Performance, Plugins, Settings) to the sections that
+map to something the platform can actually do today: **AI Chat**, a
+**tool explorer**, a **drawing preview**, and **validation** — a project/
+revision/plugin/log system would be UI over persistence and a plugin SDK
+that don't exist yet, and building that chrome now would just be inert.
+
+`apps/dashboard/static/` is a dependency-free vanilla HTML/CSS/JS app —
+no framework, no build step — served by the REST API itself via
+`StaticFiles` mounted at `/dashboard` (`apps/api/main.py`), so there is no
+CORS configuration to get wrong: the dashboard calls same-origin `/tools`,
+`/drawings/validate`, and `/drawings/execute` directly. It maintains its
+own client-side list of drawn entities purely to render an SVG preview;
+that list is explicitly not the source of truth (the backend document is)
+and the UI says so.
+
+Two things needed a small backend change to make the dashboard possible:
+
+- `execute_plan`/`execute_drawing` didn't return the entity that was
+  actually drawn, only its handle — fine for an MCP client that already
+  knows what it asked for, useless for a `process_command` (natural
+  language) response, since the caller has no other way to learn what the
+  parser resolved the request to. Both endpoints now echo the
+  (possibly-autofixed) entity's own data back.
+- Nothing else — `apps/dashboard` and `apps/api` are the only new code;
+  `engine/`, `cad/`, `dxf/`, `nlp/` were untouched.
+
+The dashboard was verified running against a live `uvicorn` dev server and
+driven with Playwright/Chromium in this environment: chat-driven natural
+language draw, a direct tool call with a JSON args form, a validate-only
+dry run showing errors/warnings, and a save call all confirmed working,
+with the SVG preview rendering coordinates correctly (y-up, matching the
+engine's convention, despite SVG's native y-down coordinate system).
+Automated browser tests are not part of the CI suite — that would need
+`playwright install` as a CI step, which was judged out of scope for this
+pass; the REST API's own pytest suite already covers every endpoint the
+dashboard depends on, including that the static files are served correctly.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
-placeholder directories were created for them (an empty `dashboard/` or
-`plugins/` folder communicates nothing and just adds noise):
+placeholder directories were created for them (an empty `plugins/` folder
+communicates nothing and just adds noise):
 
-- Dashboard / plugin SDK
+- Plugin SDK
+- Dashboard sections that need persistence/plugins first: Projects,
+  Templates, Symbol Libraries, Revisions, History, Execution Queue, Logs,
+  Performance, Settings
 - Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
 - Symbol libraries / ANSI-ISO-IEC standards knowledge base
 - DWG/SVG/PDF/LISP/SCR export (DXF is the one working export format for now)

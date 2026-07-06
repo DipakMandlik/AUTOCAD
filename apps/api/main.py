@@ -11,14 +11,18 @@ Run with: `uvicorn apps.api.main:app`
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Dict, List
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 
 from apps.context import ServerContext, build_context
 from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME, issue_to_dict, run_pipeline
 from config import Settings
 from engine.geometry.primitives import DrawingPlan
+
+DASHBOARD_STATIC_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "static"
 
 
 def create_app(ctx: ServerContext) -> FastAPI:
@@ -60,7 +64,7 @@ def create_app(ctx: ServerContext) -> FastAPI:
     def execute_drawing(plan: DrawingPlan) -> Dict[str, Any]:
         """Execute a full multi-entity plan in one call (validate -> autofix
         if needed -> execute), unlike the single-operation MCP tools."""
-        _plan, report, applied_fixes, result = run_pipeline(plan, ctx)
+        fixed_plan, report, applied_fixes, result = run_pipeline(plan, ctx)
         if result is None:
             issues = [issue_to_dict(i) for i in report.issues]
             return {"success": False, "message": "validation failed", "issues": issues}
@@ -73,12 +77,16 @@ def create_app(ctx: ServerContext) -> FastAPI:
                     "success": r.success,
                     "handle": r.handle,
                     "error": r.error,
+                    "entity": fixed_plan.operations[r.index].model_dump(),
                 }
                 for r in result.results
             ],
             "warnings": [issue_to_dict(i) for i in report.warnings],
             "autofixed": [issue_to_dict(i) for i in applied_fixes],
         }
+
+    if DASHBOARD_STATIC_DIR.is_dir():
+        app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")
 
     return app
 

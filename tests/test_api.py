@@ -28,6 +28,18 @@ def test_health(client):
     assert body["backend"] == "dxf"
 
 
+def test_dashboard_is_served(client):
+    index = client.get("/dashboard/")
+    assert index.status_code == 200
+    assert "text/html" in index.headers["content-type"]
+
+    script = client.get("/dashboard/app.js")
+    assert script.status_code == 200
+
+    style = client.get("/dashboard/styles.css")
+    assert style.status_code == 200
+
+
 def test_list_tools_matches_registry(client):
     response = client.get("/tools")
     assert response.status_code == 200
@@ -89,6 +101,8 @@ def test_execute_endpoint_draws_multiple_entities(client):
     assert body["success"] is True
     assert len(body["results"]) == 2
     assert all(r["success"] for r in body["results"])
+    assert body["results"][0]["entity"]["type"] == "circle"
+    assert body["results"][1]["entity"]["type"] == "line"
 
 
 def test_execute_endpoint_autofixes_and_reports(client):

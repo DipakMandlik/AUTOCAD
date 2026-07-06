@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CAD MCP Platform</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>CAD MCP Platform</h1>
+    <div class="status" id="status">connecting…</div>
+  </header>
+
+  <main class="layout">
+    <section class="col col-controls">
+      <div class="panel">
+        <h2>AI Chat</h2>
+        <p class="hint">Natural language, routed through <code>process_command</code>.</p>
+        <form id="chat-form">
+          <input id="chat-input" type="text" placeholder='e.g. "draw a circle at (20,20) radius 15 blue"' autocomplete="off" />
+          <button type="submit">Run</button>
+        </form>
+        <div class="log" id="chat-log"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Tools</h2>
+        <p class="hint">Call any registered MCP tool directly.</p>
+        <select id="tool-select"></select>
+        <div class="tool-schema" id="tool-schema"></div>
+        <textarea id="tool-args" rows="4" spellcheck="false">{}</textarea>
+        <button id="tool-call">Call tool</button>
+        <div class="log" id="tool-log"></div>
+      </div>
+
+      <div class="panel">
+        <h2>Validate a plan</h2>
+        <p class="hint">Paste a list of operations; nothing is executed.</p>
+        <textarea id="validate-input" rows="4" spellcheck="false">[
+  { "type": "circle", "center": [0, 0], "radius": 5 }
+]</textarea>
+        <button id="validate-call">Validate</button>
+        <div class="log" id="validate-log"></div>
+      </div>
+    </section>
+
+    <section class="col col-preview">
+      <div class="panel panel-preview">
+        <div class="preview-header">
+          <h2>Drawing preview</h2>
+          <div class="preview-actions">
+            <input id="save-path" type="text" placeholder="output filename, e.g. demo.dxf" />
+            <button id="save-call">Save</button>
+            <button id="clear-preview">Clear</button>
+          </div>
+        </div>
+        <p class="hint">
+          Rendered client-side from what has actually been drawn this session —
+          not a full CAD-accurate renderer, just enough to see the plan take shape.
+        </p>
+        <svg id="canvas" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet"></svg>
+        <div class="log" id="preview-log"></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
