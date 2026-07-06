@@ -201,6 +201,53 @@ Automated browser tests are not part of the CI suite — that would need
 pass; the REST API's own pytest suite already covers every endpoint the
 dashboard depends on, including that the static files are served correctly.
 
+## Phase 6: Persistence and revision history
+
+The biggest gap the Phase 5 deferred list called out was "a persistence/
+project/revision-history layer" — without it, three whole dashboard
+sections (Projects, Revisions, History) had nothing to be built against.
+This phase closes that gap, scoped to what's actually needed rather than a
+general-purpose document database:
+
+- **`storage/`** — `Project`/`Revision` Pydantic models plus `ProjectStore`,
+  a file-based store (one JSON document per project). No database
+  dependency: at this scale a directory of JSON files is entirely
+  adequate, and it follows the same interface-over-adapter shape as
+  `cad.backend` — swapping in a real database later means replacing this
+  module, not anything that calls it. Project ids double as filenames, so
+  `ProjectStore` validates them against a safe-character pattern before
+  touching the filesystem, the same path-traversal guard as
+  `cad.backend.resolve_safe_path`.
+- **`ServerContext.history`** — every entity actually drawn (i.e. present
+  in a *successful* `EntityResult`) is appended here by `run_pipeline`.
+  This is what "the current drawing" means for `get_current_drawing`,
+  `create_project`, and `snapshot_project`; it is bookkeeping at the
+  orchestration layer, not a backend capability, so it works identically
+  regardless of which `CADBackend` is active and needed no backend changes.
+- **New tools** (registered once, so both MCP and REST get them for free):
+  `get_current_drawing`, `clear_current_drawing`, `create_project`,
+  `list_projects`, `get_project`, `snapshot_project`, `load_project`.
+  `load_project` re-runs a saved plan through `run_pipeline` exactly like
+  any other multi-entity plan — it is not a separate code path.
+- **REST route sugar** — `GET/POST /projects`, `GET /projects/{id}`,
+  `POST /projects/{id}/revisions`, `POST /projects/{id}/load`,
+  `GET /drawings/current`, `POST /drawings/clear`. Each is a thin wrapper
+  calling the same tool handler `/tools/{name}` would; they exist purely
+  for a more idiomatic REST surface, not because the generic dispatch
+  couldn't already do this.
+- **Dashboard "Projects" panel** — save-as-project, per-project snapshot
+  and load buttons, and the drawing preview now syncs from
+  `GET /drawings/current` after a load/clear instead of only tracking its
+  own optimistic client-side state.
+
+**What this is not**: full multi-tenant project isolation. There is still
+exactly one live backend document per process. "Loading" a project redraws
+its plan against whatever is currently open — if you already have entities
+drawn, loading a project adds to them rather than opening it in isolation.
+Multiple concurrent documents/projects would need the backend layer itself
+to become multi-document-aware, which is a real architectural change, not
+a small addition — deliberately not attempted here.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -208,16 +255,14 @@ placeholder directories were created for them (an empty `plugins/` folder
 communicates nothing and just adds noise):
 
 - Plugin SDK
-- Dashboard sections that need persistence/plugins first: Projects,
-  Templates, Symbol Libraries, Revisions, History, Execution Queue, Logs,
-  Performance, Settings
+- Dashboard sections that need a plugin SDK or richer UI first: Templates,
+  Symbol Libraries, Execution Queue, Logs, Performance, Settings
 - Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
 - Symbol libraries / ANSI-ISO-IEC standards knowledge base
 - DWG/SVG/PDF/LISP/SCR export (DXF is the one working export format for now)
 - FreeCAD/Fusion/SolidWorks/Revit backends (the `CADBackend` interface is
   designed so these can be added later as new adapters)
-- Persistence/project/revision-history layer (both apps currently hold one
-  in-memory backend document for the process lifetime)
+- True multi-document/multi-tenant project isolation (see the Phase 6 note above)
 
 These become straightforward additions once the spine under them is proven
 — building them before that spine exists would mean rewriting them anyway.

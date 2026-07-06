@@ -108,6 +108,25 @@ button:hover { background: var(--accent-strong); }
 #chat-form { display: flex; gap: 0.5rem; }
 #chat-form input { flex: 1; }
 
+.project-save { display: flex; gap: 0.5rem; }
+.project-save input { flex: 1; }
+
+.project-list { margin-top: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem; }
+.project-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+}
+.project-card .meta { color: var(--muted); font-size: 0.72rem; font-family: var(--mono); }
+.project-card .actions { display: flex; gap: 0.35rem; }
+.project-card button { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
+.project-card button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
 #tool-select { margin-bottom: 0.5rem; }
 .tool-schema {
   font-family: var(--mono);

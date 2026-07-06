@@ -21,6 +21,7 @@ from engine.planner.planner import NonGeometryIntent, PlanningError
 from engine.validator.engine import ValidationReport
 from engine.validator.issue import Issue
 from nlp.fallback import FallbackParser
+from storage.store import ProjectNotFoundError
 
 __all__ = [
     "ServerContext",
@@ -30,6 +31,7 @@ __all__ = [
     "execute_plan",
     "run_pipeline",
     "issue_to_dict",
+    "result_entries",
 ]
 
 
@@ -95,6 +97,8 @@ def run_pipeline(
         return plan, report, applied_fixes, None
 
     result = ctx.backend.execute(plan)
+    succeeded = {r.index for r in result.results if r.success}
+    ctx.history.extend(op for i, op in enumerate(plan.operations) if i in succeeded)
     return plan, report, applied_fixes, result
 
 
@@ -173,6 +177,110 @@ def _handle_process_command(arguments: Dict[str, Any], ctx: ServerContext) -> Di
     except PlanningError as exc:
         return {"success": False, "message": str(exc)}
     return execute_plan(plan, ctx)
+
+
+def _handle_get_current_drawing(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    return {"success": True, "operations": [entity.model_dump() for entity in ctx.history]}
+
+
+def _handle_clear_current_drawing(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    count = len(ctx.history)
+    ctx.history.clear()
+    return {"success": True, "message": f"cleared {count} entit{'y' if count == 1 else 'ies'} from history"}
+
+
+def _handle_create_project(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    name = arguments.get("name")
+    if not name:
+        return {"success": False, "message": "name is required"}
+    plan = DrawingPlan(name=name, operations=list(ctx.history))
+    project = ctx.project_store.create(name, plan)
+    return {"success": True, "message": f"project '{name}' created", "project_id": project.id, "revision": 1}
+
+
+def _handle_list_projects(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    projects = ctx.project_store.list()
+    return {
+        "success": True,
+        "projects": [
+            {
+                "id": p.id,
+                "name": p.name,
+                "created_at": p.created_at,
+                "updated_at": p.updated_at,
+                "revisions": len(p.revisions),
+            }
+            for p in projects
+        ],
+    }
+
+
+def _handle_get_project(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    project_id = arguments.get("project_id")
+    if not project_id:
+        return {"success": False, "message": "project_id is required"}
+    try:
+        project = ctx.project_store.get(project_id)
+    except ProjectNotFoundError:
+        return {"success": False, "message": f"project '{project_id}' not found"}
+    except ValueError as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "project": project.model_dump()}
+
+
+def _handle_snapshot_project(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    project_id = arguments.get("project_id")
+    if not project_id:
+        return {"success": False, "message": "project_id is required"}
+    plan = DrawingPlan(operations=list(ctx.history))
+    try:
+        project = ctx.project_store.add_revision(project_id, plan, arguments.get("note"))
+    except ProjectNotFoundError:
+        return {"success": False, "message": f"project '{project_id}' not found"}
+    except ValueError as exc:
+        return {"success": False, "message": str(exc)}
+    revision = len(project.revisions)
+    return {"success": True, "message": f"revision {revision} saved", "revision": revision}
+
+
+def result_entries(fixed_plan: DrawingPlan, result: ExecutionResult) -> List[Dict[str, Any]]:
+    """Per-entity execution results, each including the entity's own data —
+    shared by load_project below and the REST API's /drawings/execute."""
+    return [
+        {
+            "index": r.index,
+            "entity_type": r.entity_type,
+            "success": r.success,
+            "handle": r.handle,
+            "error": r.error,
+            "entity": fixed_plan.operations[r.index].model_dump(),
+        }
+        for r in result.results
+    ]
+
+
+def _handle_load_project(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    project_id = arguments.get("project_id")
+    if not project_id:
+        return {"success": False, "message": "project_id is required"}
+    try:
+        project = ctx.project_store.get(project_id)
+    except ProjectNotFoundError:
+        return {"success": False, "message": f"project '{project_id}' not found"}
+    except ValueError as exc:
+        return {"success": False, "message": str(exc)}
+
+    fixed_plan, report, applied_fixes, result = run_pipeline(project.plan, ctx)
+    if result is None:
+        issues = [issue_to_dict(i) for i in report.issues]
+        return {"success": False, "message": "validation failed", "issues": issues}
+    return {
+        "success": result.success,
+        "message": f"loaded project '{project.name}' ({len(result.results)} entities)",
+        "results": result_entries(fixed_plan, result),
+        "warnings": [issue_to_dict(i) for i in report.warnings],
+        "autofixed": [issue_to_dict(i) for i in applied_fixes],
+    }
 
 
 @dataclass
@@ -373,6 +481,67 @@ TOOL_REGISTRY: List[ToolSpec] = [
             "required": ["command"],
         },
         _handle_process_command,
+    ),
+    ToolSpec(
+        "get_current_drawing",
+        "List every entity successfully drawn so far this session",
+        {"type": "object", "properties": {}},
+        _handle_get_current_drawing,
+    ),
+    ToolSpec(
+        "clear_current_drawing",
+        "Clear the session's drawing history (does not undo anything already sent to the backend)",
+        {"type": "object", "properties": {}},
+        _handle_clear_current_drawing,
+    ),
+    ToolSpec(
+        "create_project",
+        "Save the current drawing history as a new named project",
+        {
+            "type": "object",
+            "properties": {"name": {"type": "string", "description": "project name"}},
+            "required": ["name"],
+        },
+        _handle_create_project,
+    ),
+    ToolSpec(
+        "list_projects",
+        "List all saved projects",
+        {"type": "object", "properties": {}},
+        _handle_list_projects,
+    ),
+    ToolSpec(
+        "get_project",
+        "Get a saved project's full plan and revision history",
+        {
+            "type": "object",
+            "properties": {"project_id": {"type": "string", "description": "project id"}},
+            "required": ["project_id"],
+        },
+        _handle_get_project,
+    ),
+    ToolSpec(
+        "snapshot_project",
+        "Save the current drawing history as a new revision of an existing project",
+        {
+            "type": "object",
+            "properties": {
+                "project_id": {"type": "string", "description": "project id"},
+                "note": {"type": "string", "description": "revision note (optional)"},
+            },
+            "required": ["project_id"],
+        },
+        _handle_snapshot_project,
+    ),
+    ToolSpec(
+        "load_project",
+        "Re-draw a saved project's plan against the current backend",
+        {
+            "type": "object",
+            "properties": {"project_id": {"type": "string", "description": "project id"}},
+            "required": ["project_id"],
+        },
+        _handle_load_project,
     ),
 ]
 

@@ -7,6 +7,7 @@ from cad.registry import get_backend
 from engine.planner.planner import Planner
 from engine.validator.engine import ValidationEngine
 from nlp.fallback import FallbackParser
+from storage.store import ProjectStore
 
 
 @pytest.fixture
@@ -14,8 +15,9 @@ def client(tmp_path):
     ctx = ServerContext(
         planner=Planner(),
         validator=ValidationEngine(),
-        backend=get_backend("dxf", output_dir=str(tmp_path)),
+        backend=get_backend("dxf", output_dir=str(tmp_path / "output")),
         color_parser=FallbackParser(),
+        project_store=ProjectStore(str(tmp_path / "projects")),
     )
     return TestClient(create_app(ctx))
 
@@ -134,3 +136,50 @@ def test_execute_endpoint_reports_uncorrectable_validation_failure(client):
     body = response.json()
     assert body["success"] is False
     assert "issues" in body
+
+
+def test_current_drawing_and_clear(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    current = client.get("/drawings/current").json()
+    assert len(current["operations"]) == 1
+
+    cleared = client.post("/drawings/clear").json()
+    assert cleared["success"] is True
+    assert client.get("/drawings/current").json()["operations"] == []
+
+
+def test_project_lifecycle_via_rest(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+
+    created = client.post("/projects", json={"name": "demo"}).json()
+    assert created["success"] is True
+    project_id = created["project_id"]
+
+    client.post("/tools/draw_line", json={"start": [0, 0], "end": [10, 10]})
+    snapshot = client.post(f"/projects/{project_id}/revisions", json={"note": "added a line"}).json()
+    assert snapshot["revision"] == 2
+
+    fetched = client.get(f"/projects/{project_id}").json()
+    assert fetched["project"]["name"] == "demo"
+    assert len(fetched["project"]["revisions"]) == 2
+
+    listed = client.get("/projects").json()
+    assert any(p["id"] == project_id for p in listed["projects"])
+
+    client.post("/drawings/clear")
+    loaded = client.post(f"/projects/{project_id}/load").json()
+    assert loaded["success"] is True
+    assert len(loaded["results"]) == 2
+
+
+def test_get_unknown_project_returns_404(client):
+    response = client.get("/projects/does-not-exist")
+    assert response.status_code == 404
+
+
+def test_load_unknown_project_returns_200_with_failure(client):
+    # unlike GET, this dispatches through the generic tool-handler shape,
+    # which reports failure in the body rather than as an HTTP error
+    response = client.post("/projects/does-not-exist/load")
+    assert response.status_code == 200
+    assert response.json()["success"] is False

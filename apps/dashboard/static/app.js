@@ -170,10 +170,91 @@ function setupSaveAndClear() {
       logEntry(log, false, "save failed", err.message);
     }
   });
-  document.getElementById("clear-preview").addEventListener("click", () => {
-    state.entities = [];
-    renderPreview();
-    logEntry(log, true, "preview cleared", "(server-side drawing is untouched)");
+  document.getElementById("clear-preview").addEventListener("click", async () => {
+    try {
+      const result = await api("/drawings/clear", { method: "POST" });
+      state.entities = [];
+      renderPreview();
+      logEntry(log, true, "drawing history cleared", result.message);
+    } catch (err) {
+      logEntry(log, false, "clear failed", err.message);
+    }
+  });
+}
+
+// --- Projects ----------------------------------------------------------
+
+async function syncPreviewFromServer() {
+  const current = await api("/drawings/current");
+  state.entities = current.operations || [];
+  renderPreview();
+}
+
+async function loadProjects() {
+  const result = await api("/projects");
+  const list = document.getElementById("project-list");
+  list.innerHTML = "";
+  for (const project of result.projects) {
+    const card = document.createElement("div");
+    card.className = "project-card";
+    card.innerHTML = `
+      <div>
+        <div>${project.name}</div>
+        <div class="meta">${project.id} · ${project.revisions} revision(s)</div>
+      </div>
+      <div class="actions">
+        <button data-action="snapshot" data-id="${project.id}" class="secondary">Snapshot</button>
+        <button data-action="load" data-id="${project.id}">Load</button>
+      </div>`;
+    list.appendChild(card);
+  }
+}
+
+function setupProjects() {
+  const log = document.getElementById("project-log");
+
+  document.getElementById("project-save").addEventListener("click", async () => {
+    const nameInput = document.getElementById("project-name");
+    const name = nameInput.value.trim();
+    if (!name) {
+      logEntry(log, false, "save as project", "enter a project name first");
+      return;
+    }
+    try {
+      const result = await api("/projects", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      logEntry(log, result.success, result.message, result.project_id || "");
+      nameInput.value = "";
+      await loadProjects();
+    } catch (err) {
+      logEntry(log, false, "request failed", err.message);
+    }
+  });
+
+  document.getElementById("project-list").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-action]");
+    if (!button) return;
+    const { action, id } = button.dataset;
+    try {
+      if (action === "snapshot") {
+        const result = await api(`/projects/${id}/revisions`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        logEntry(log, result.success, result.message, "");
+        await loadProjects();
+      } else if (action === "load") {
+        const result = await api(`/projects/${id}/load`, { method: "POST" });
+        logEntry(log, result.success, result.message, "");
+        await syncPreviewFromServer();
+      }
+    } catch (err) {
+      logEntry(log, false, "request failed", err.message);
+    }
   });
 }
 
@@ -296,11 +377,13 @@ function renderPreview() {
 async function init() {
   await refreshHealth();
   await loadTools();
+  await loadProjects();
+  await syncPreviewFromServer();
   setupChat();
   setupToolCaller();
   setupValidator();
   setupSaveAndClear();
-  renderPreview();
+  setupProjects();
 }
 
 init();

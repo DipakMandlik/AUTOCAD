@@ -35,6 +35,17 @@
       </div>
 
       <div class="panel">
+        <h2>Projects</h2>
+        <p class="hint">Snapshot the current drawing as a project, or load a saved one back in.</p>
+        <div class="project-save">
+          <input id="project-name" type="text" placeholder="project name" />
+          <button id="project-save">Save as project</button>
+        </div>
+        <div class="project-list" id="project-list"></div>
+        <div class="log" id="project-log"></div>
+      </div>
+
+      <div class="panel">
         <h2>Validate a plan</h2>
         <p class="hint">Paste a list of operations; nothing is executed.</p>
         <textarea id="validate-input" rows="4" spellcheck="false">[

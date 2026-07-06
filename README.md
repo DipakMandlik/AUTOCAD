@@ -55,7 +55,7 @@ pip install -e ".[autocad]"      # adds pywin32, Windows only
 ## Run the tests
 
 ```bash
-pytest -v      # 71 tests, all run headlessly against the DXF backend
+pytest -v      # 93 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -66,14 +66,19 @@ uvicorn apps.api.main:app --reload
 ```
 
 Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
-tool explorer with live schemas, an SVG drawing preview, and a
-validate-only dry-run panel), or use the API directly:
+tool explorer with live schemas, an SVG drawing preview, a validate-only
+dry-run panel, and a Projects panel for saving/loading drawings), or use
+the API directly:
 
 - `GET /health` — status + which backend is active
 - `GET /tools` — list every tool's name/description/JSON schema
 - `POST /tools/{name}` — call a tool (same handlers and pipeline as MCP)
 - `POST /drawings/validate` — validate a full `DrawingPlan` without executing
 - `POST /drawings/execute` — execute a multi-entity `DrawingPlan` in one call
+- `GET /drawings/current` / `POST /drawings/clear` — the session's drawing history
+- `GET/POST /projects`, `GET /projects/{id}` — list/create/inspect saved projects
+- `POST /projects/{id}/revisions` — snapshot the current drawing as a new revision
+- `POST /projects/{id}/load` — re-draw a saved project's plan
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -81,6 +86,9 @@ curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json
 
 curl -X POST localhost:8000/drawings/execute -H 'content-type: application/json' \
   -d '{"operations": [{"type": "line", "start": [0,0], "end": [10,10]}]}'
+
+curl -X POST localhost:8000/projects -H 'content-type: application/json' \
+  -d '{"name": "my-drawing"}'
 ```
 
 ## Run the MCP server
@@ -109,7 +117,9 @@ Configure via an optional `config.json` in the working directory, or
 
 `draw_line`, `draw_circle`, `draw_arc`, `draw_ellipse`, `draw_polyline`,
 `draw_rectangle`, `draw_text`, `draw_hatch`, `add_dimension`,
-`save_drawing`, `create_layer`, `process_command` (natural language).
+`save_drawing`, `create_layer`, `process_command` (natural language),
+`get_current_drawing`, `clear_current_drawing`, `create_project`,
+`list_projects`, `get_project`, `snapshot_project`, `load_project`.
 
 Every geometry tool argument matches the field names in
 `engine/geometry/primitives.py` directly (e.g. `start`/`end` for a line,
@@ -129,22 +139,31 @@ Briefly:
 - `cad/` — the `CADBackend` interface and backend registry
 - `dxf/` — headless backend (ezdxf); what the test suite runs against
 - `autocad/` — Windows COM backend for AutoCAD/GstarCAD/ZWCAD
+- `storage/` — `Project`/`Revision` models + file-based `ProjectStore` (one JSON document per project)
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
 - `apps/dashboard/` — static web UI served by the REST API at `/dashboard`
 - `config.py` — single validated settings source
 
+Note on persistence scope: there is still exactly one live backend document
+per process. Saving/loading projects snapshots and restores a `DrawingPlan`,
+but "loading" a project draws it into whatever is currently open rather
+than opening it in an isolated document — see `docs/architecture.md`
+(Phase 6) for why full multi-document isolation is a bigger change than
+this pass attempted.
+
 ## What's deferred
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
-for why): plugin SDK; the dashboard sections that need persistence or
-plugins first (Projects, Templates, Symbol Libraries, Revisions, History,
-Execution Queue, Logs, Performance, Settings); multi-format import
-(PDF/image/sketch/Excel); symbol libraries and the ANSI/ISO/IEC standards
-knowledge base; DWG/SVG/PDF/LISP/SCR export; non-AutoCAD-family backends
-(FreeCAD, Fusion 360, etc.); and a persistence/project/revision-history
-layer. The `CADBackend` interface is designed so new backends can be added
-later without touching the planning/validation spine. MCP resources and
-prompts (`drawing://current`, the `cad-assistant` prompt) from the
-original repo were also not carried over.
+for why): plugin SDK; the dashboard sections that need a plugin SDK or
+richer UI first (Templates, Symbol Libraries, Execution Queue, Logs,
+Performance, Settings); multi-format import (PDF/image/sketch/Excel);
+symbol libraries and the ANSI/ISO/IEC standards knowledge base;
+DWG/SVG/PDF/LISP/SCR export; non-AutoCAD-family backends (FreeCAD, Fusion
+360, etc.); and true multi-document/multi-tenant project isolation. The
+`CADBackend` interface is designed so new backends can be added later
+without touching the planning/validation spine. MCP resources and prompts
+(`drawing://current`, the `cad-assistant` prompt) from the original repo
+were also not carried over as MCP-native resources — `get_current_drawing`
+is the equivalent capability, exposed as a tool instead.

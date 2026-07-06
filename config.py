@@ -48,12 +48,17 @@ class OutputSettings(BaseModel):
     default_filename: str = "cad_drawing.dxf"
 
 
+class StorageSettings(BaseModel):
+    directory: str = "./projects"
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="CADMCP_", env_nested_delimiter="__")
 
     server: ServerSettings = Field(default_factory=ServerSettings)
     cad: CADSettings = Field(default_factory=CADSettings)
     output: OutputSettings = Field(default_factory=OutputSettings)
+    storage: StorageSettings = Field(default_factory=StorageSettings)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "Settings":
