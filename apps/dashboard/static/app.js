@@ -263,6 +263,56 @@ function setupSymbols() {
   });
 }
 
+// --- Templates -----------------------------------------------------------
+
+async function loadTemplates() {
+  const result = await api("/templates");
+  const grid = document.getElementById("template-grid");
+  grid.innerHTML = "";
+  for (const template of result.templates) {
+    const card = document.createElement("div");
+    card.className = "symbol-card";
+    card.innerHTML = `
+      <img src="/templates/${template.name}/preview?format=svg" alt="${template.name}" loading="lazy" />
+      <div class="symbol-name">${template.name}</div>
+      <div class="meta">${template.width}×${template.height}mm</div>
+      <button data-template="${template.name}">Insert</button>`;
+    grid.appendChild(card);
+  }
+}
+
+function setupTemplates() {
+  const log = document.getElementById("template-log");
+  document.getElementById("template-grid").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-template]");
+    if (!button) return;
+    const templateName = button.dataset.template;
+
+    const originText = document.getElementById("template-origin").value.trim() || "0,0";
+    const origin = originText.split(",").map((n) => parseFloat(n.trim()) || 0);
+    const args = {
+      template_name: templateName,
+      origin,
+      title: document.getElementById("template-title").value.trim(),
+      drawn_by: document.getElementById("template-drawn-by").value.trim(),
+      date: document.getElementById("template-date").value.trim(),
+      scale: document.getElementById("template-scale").value.trim(),
+      sheet_number: document.getElementById("template-sheet").value.trim(),
+    };
+
+    try {
+      const result = await api("/tools/insert_title_block", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(args),
+      });
+      handleToolResult(result, log, `insert ${templateName}`);
+    } catch (err) {
+      logEntry(log, false, "insert failed", err.message);
+    }
+  });
+}
+
 // --- Execution log + Performance ---------------------------------------
 // Both panels read from the same server-side execution log, so a single
 // refreshLogs() call (invoked from every action path below) keeps both
@@ -613,6 +663,7 @@ async function init() {
   await refreshHealth();
   await loadTools();
   await loadSymbols();
+  await loadTemplates();
   await loadProjects();
   await syncPreviewFromServer();
   await loadSettings();
@@ -622,6 +673,7 @@ async function init() {
   setupSaveAndClear();
   setupExportButtons();
   setupSymbols();
+  setupTemplates();
   setupSvgImport();
   setupProjects();
   setupRenderToggle();

@@ -26,6 +26,7 @@ from export.renderer import render_png, render_svg
 from export.script import render_lisp, render_scr
 from storage.store import ProjectNotFoundError, ProjectStore
 from symbols.library import SYMBOL_LIBRARY
+from templates.library import TEMPLATE_LIBRARY, build_title_block
 
 DASHBOARD_STATIC_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "static"
 
@@ -208,6 +209,30 @@ def create_app(ctx: ServerContext) -> FastAPI:
     @app.get("/settings")
     def get_settings() -> Dict[str, Any]:
         return TOOLS_BY_NAME["get_settings"].handler({}, ctx)
+
+    @app.get("/templates")
+    def list_templates() -> Dict[str, Any]:
+        return TOOLS_BY_NAME["list_templates"].handler({}, ctx)
+
+    @app.get("/templates/{template_name}/preview")
+    def preview_template(
+        template_name: str, image_format: str = Query("svg", alias="format", pattern="^(svg|png)$")
+    ) -> Response:
+        """Render one template in isolation with sample field values —
+        same pattern as /symbols/{name}/preview: no template-specific
+        rendering code, just a DrawingPlan through the same renderer."""
+        if template_name not in TEMPLATE_LIBRARY:
+            raise HTTPException(status_code=404, detail=f"unknown template '{template_name}'")
+        entities = build_title_block(
+            template_name,
+            title="Sample Drawing",
+            drawn_by="Jane Doe",
+            date="2026-01-01",
+            scale="1:100",
+            sheet_number="1/1",
+        )
+        plan = DrawingPlan(operations=entities)
+        return _render_response(plan, image_format)
 
     if DASHBOARD_STATIC_DIR.is_dir():
         app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")

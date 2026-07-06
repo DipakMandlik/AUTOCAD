@@ -615,26 +615,89 @@ rather than buried in whatever `config.json`/env vars produced it.
   `cad.backend`, `output.directory`, `storage.directory`, and
   `plugins.directory` values.
 
+## Phase 15: Templates (dashboard "Templates" section)
+
+Distinct from Phase 10's symbol library on purpose: a symbol is a small
+reusable component inserted at a point (a resistor, a door swing); a
+template is a whole-sheet layout a drawing gets built on top of (a
+border plus a title block). Conflating the two under "symbols" would
+have muddied both.
+
+- **`templates/library.py`**: `build_title_block(template_name, title=,
+  drawn_by=, date=, scale=, sheet_number=, origin=)` builds a border
+  rectangle plus a nested title-block box in the bottom-right corner,
+  divided into a 2-column-by-3-row grid (Title spans the top row; Drawn
+  by/Date and Scale/Sheet split the middle and bottom rows). Every text
+  field is optional — an empty string just omits that label, so a caller
+  can insert a bare border-and-grid with no placeholder text. Sheet sizes
+  (`a4_landscape`, `a3_landscape`, `letter_landscape`) are the
+  **public-domain ISO 216/ANSI paper dimensions themselves** — plain
+  numbers, not licensed content — which is a different, much smaller
+  claim than a real title-block *standard* (exact zone layout, field
+  codes, revision-table format per ISO 7200 or a company's drafting
+  standard), which is not attempted here for the same licensing reason
+  Phase 10's symbols aren't ANSI/IEC-compliant.
+- **A real bug, caught by testing the dashboard, not by unit tests
+  alone**: the first implementation's `_shift()` helper indexed
+  `origin[2]` unconditionally, but REST/MCP tool arguments arrive as a
+  plain `[x, y]` JSON list (no `z`) — unlike a `Point3` field inside a
+  validated `Entity`, which pads a missing `z` via `_coerce_point`'s
+  `BeforeValidator`. All of `templates/library.py`'s own unit tests
+  passed (they all called `build_title_block` with proper 3-tuples), so
+  this only surfaced as a live `IndexError` → 500 when the dashboard's
+  "Insert" button sent a real `[0, 0]` origin. Fixed by normalizing
+  `origin` to a 3-tuple once at the top of `build_title_block`, the same
+  defensive pattern `symbols/library.py`'s `_transform` already used for
+  exactly this reason — a pattern this phase should have reused
+  up front rather than rediscovering the hard way. A regression test
+  (`test_two_element_origin_defaults_z_to_zero`) now covers it directly.
+- **`list_templates`/`insert_title_block` tools + `GET /templates`,
+  `GET /templates/{name}/preview`**: same shape as Phase 10's symbol
+  tools — `insert_title_block` is multi-entity, so it goes through
+  `run_pipeline`/`result_entries` directly, and the preview endpoint
+  reuses `export.renderer` with sample field values, no template-specific
+  rendering code.
+- **Expected noise, not a bug**: inserting a title block produces several
+  `possible_collision` validator warnings (Phase 3's bounding-box-overlap
+  heuristic), because a title block is inherently nested geometry — the
+  outer border's bounding box contains the title-block box's, which
+  contains its divider lines' and text's. This is a pre-existing rule
+  applied to a new, legitimately-nested use case, not something Phase 15
+  introduced or worsened; fixing the heuristic itself (distinguishing
+  "genuinely overlapping duplicate geometry" from "intentionally nested
+  geometry") would mean touching the shared validator every other tool
+  also depends on, which is out of scope for a templates feature. The
+  operation still succeeds — these are warnings, not errors.
+- **Dashboard "Templates" panel**: shared title/drawn_by/date/scale/
+  sheet_number/origin inputs applied to whichever sheet size's Insert
+  button is clicked, plus live SVG thumbnails via the preview endpoint —
+  same interaction pattern as the Symbols panel. Verified live via
+  Playwright, including reproducing and then confirming the fix for the
+  origin bug above.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
 placeholder directories were created for them (an empty `dashboard`
 section folder communicates nothing and just adds noise):
 
-- Dashboard sections that need richer UI/backend support: Templates,
-  Execution Queue (Logs, Performance, and Settings now exist — Phases 12,
-  13, and 14 — though Logs is a flat recent-calls list rather than a
-  queryable/filterable one, Performance aggregates only the same bounded
-  in-memory window rather than a true cumulative historical metric, and
-  Settings is read-only with no live-editable API)
+- The "Execution Queue" dashboard section (Templates, Logs, Performance,
+  and Settings now exist — Phases 12–15 — though Logs is a flat
+  recent-calls list rather than a queryable/filterable one, Performance
+  aggregates only the same bounded in-memory window rather than a true
+  cumulative historical metric, Settings is read-only with no
+  live-editable API, and Templates is one starter layout — a title block
+  — not a general template system for arbitrary reusable drawing
+  fragments)
 - Multi-format import beyond SVG: PDF, raster image, hand sketch,
   Excel/CSV, flowcharts — these need OCR/ML or heavyweight parsing this
   sandbox can't install or verify (Phase 11 covers plain, unstyled,
   ungrouped SVG; `<g>`/element transforms and CSS/fill/stroke-to-CAD-color
   mapping are gaps even within SVG — see the Phase 11 scope boundary above)
 - The ANSI/ISO/IEC/ASME/DIN/JIS standards knowledge base itself (dimension
-  rules, title block standards, named-standard layer conventions) — the
-  symbol *library* now exists (Phase 10), but it is illustrative geometry,
+  rules, title block *standards* — as opposed to Phase 15's plain paper
+  dimensions — named-standard layer conventions) — the symbol *library*
+  now exists (Phase 10), but it is illustrative geometry,
   not licensed standards content
 - Additional symbol disciplines beyond electrical/piping/architectural
   (mechanical, hydraulic, pneumatic, civil, HVAC, structural,

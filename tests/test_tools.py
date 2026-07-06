@@ -31,6 +31,7 @@ def test_registry_has_expected_tools():
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
         "list_symbols", "insert_symbol", "import_svg",
         "get_execution_log", "clear_execution_log", "get_performance_stats", "get_settings",
+        "list_templates", "insert_title_block",
     }
 
 
@@ -415,3 +416,42 @@ def test_get_settings_reflects_ctx_settings(ctx):
     ctx.settings = Settings(cad=CADSettings(backend="dxf", startup_wait_time=5.0))
     result = TOOLS_BY_NAME["get_settings"].handler({}, ctx)
     assert result["settings"]["cad"]["startup_wait_time"] == 5.0
+
+
+def test_list_templates_tool(ctx):
+    result = TOOLS_BY_NAME["list_templates"].handler({}, ctx)
+    assert result["success"] is True
+    names = {t["name"] for t in result["templates"]}
+    assert "a4_landscape" in names
+    assert all("description" in t and "width" in t and "height" in t for t in result["templates"])
+
+
+def test_insert_title_block_tool_draws_multiple_entities(ctx):
+    result = TOOLS_BY_NAME["insert_title_block"].handler(
+        {"template_name": "a4_landscape", "title": "Test", "drawn_by": "AI"}, ctx
+    )
+    assert result["success"] is True
+    assert len(result["results"]) == 7  # border + box + 3 dividers + 2 text fields
+    assert len(ctx.history) == 7
+
+
+def test_insert_title_block_applies_layer(ctx):
+    result = TOOLS_BY_NAME["insert_title_block"].handler(
+        {"template_name": "a4_landscape", "layer": "titleblock"}, ctx
+    )
+    assert result["success"] is True
+    assert all(e["entity"]["layer"] == "titleblock" for e in result["results"])
+
+
+def test_insert_title_block_applies_origin(ctx):
+    result = TOOLS_BY_NAME["insert_title_block"].handler(
+        {"template_name": "a4_landscape", "origin": [100, 50, 0]}, ctx
+    )
+    border = result["results"][0]["entity"]
+    assert border["corner1"] == pytest.approx([110.0, 60.0, 0.0])
+
+
+def test_insert_title_block_unknown_template_fails_cleanly(ctx):
+    result = TOOLS_BY_NAME["insert_title_block"].handler({"template_name": "not_real"}, ctx)
+    assert result["success"] is False
+    assert "not_real" in result["message"]

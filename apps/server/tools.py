@@ -27,6 +27,7 @@ from imports.svg_import import SvgImportError, import_svg
 from nlp.fallback import FallbackParser
 from storage.store import ProjectNotFoundError
 from symbols.library import SYMBOL_LIBRARY
+from templates.library import TEMPLATE_LIBRARY, build_title_block
 
 __all__ = [
     "ServerContext",
@@ -450,6 +451,53 @@ def _handle_get_settings(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[
     return {"success": True, "settings": ctx.settings.model_dump()}
 
 
+def _handle_list_templates(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    return {
+        "success": True,
+        "templates": [
+            {"name": d.name, "description": d.description, "width": d.width, "height": d.height}
+            for d in TEMPLATE_LIBRARY.values()
+        ],
+    }
+
+
+def _handle_insert_title_block(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    template_name = arguments.get("template_name")
+    if template_name not in TEMPLATE_LIBRARY:
+        known = sorted(TEMPLATE_LIBRARY)
+        return {"success": False, "message": f"unknown template {template_name!r}; known templates: {known}"}
+
+    origin = arguments.get("origin", (0.0, 0.0, 0.0))
+    entities = build_title_block(
+        template_name,
+        title=arguments.get("title", ""),
+        drawn_by=arguments.get("drawn_by", ""),
+        date=arguments.get("date", ""),
+        scale=arguments.get("scale", ""),
+        sheet_number=arguments.get("sheet_number", ""),
+        origin=origin,
+    )
+    layer = arguments.get("layer")
+    if layer is not None:
+        entities = [e.model_copy(update={"layer": layer}) for e in entities]
+
+    # A title block is several entities (border, title-block box, dividers,
+    # text fields), so this goes through run_pipeline/result_entries
+    # directly, same as insert_symbol.
+    plan = DrawingPlan(name=f"title_block_{template_name}", operations=entities)
+    fixed_plan, report, applied_fixes, result = run_pipeline(plan, ctx)
+    if result is None:
+        issues = [issue_to_dict(i) for i in report.issues]
+        return {"success": False, "message": "validation failed", "issues": issues}
+    return {
+        "success": result.success,
+        "message": f"inserted '{template_name}' title block ({len(result.results)} entities)",
+        "results": result_entries(fixed_plan, result),
+        "warnings": [issue_to_dict(i) for i in report.warnings],
+        "autofixed": [issue_to_dict(i) for i in applied_fixes],
+    }
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -798,6 +846,32 @@ TOOL_REGISTRY: List[ToolSpec] = [
         "this process resolved at startup — read-only, no live settings API",
         {"type": "object", "properties": {}},
         _handle_get_settings,
+    ),
+    ToolSpec(
+        "list_templates",
+        "List the available drawing-sheet templates (name, description, width, height)",
+        {"type": "object", "properties": {}},
+        _handle_list_templates,
+    ),
+    ToolSpec(
+        "insert_title_block",
+        "Insert a sheet border + title block template, with optional title/drawn_by/date/scale/"
+        "sheet_number text fields and an origin offset",
+        {
+            "type": "object",
+            "properties": {
+                "template_name": {"type": "string", "description": "see list_templates"},
+                "title": {"type": "string", "description": "drawing title (optional)"},
+                "drawn_by": {"type": "string", "description": "drafter name (optional)"},
+                "date": {"type": "string", "description": "drawing date (optional)"},
+                "scale": {"type": "string", "description": "drawing scale, e.g. '1:100' (optional)"},
+                "sheet_number": {"type": "string", "description": "sheet number, e.g. '1/3' (optional)"},
+                "origin": _point_schema("sheet origin offset [x, y, (z)] (optional, default [0,0,0])"),
+                "layer": _common_props()["layer"],
+            },
+            "required": ["template_name"],
+        },
+        _handle_insert_title_block,
     ),
 ]
 

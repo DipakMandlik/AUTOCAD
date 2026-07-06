@@ -359,3 +359,39 @@ def test_get_settings_via_rest(client):
     body = response.json()
     assert body["success"] is True
     assert body["settings"]["cad"]["backend"] == "dxf"
+
+
+def test_list_templates(client):
+    response = client.get("/templates")
+    assert response.status_code == 200
+    names = {t["name"] for t in response.json()["templates"]}
+    assert {"a4_landscape", "a3_landscape", "letter_landscape"} <= names
+
+
+def test_preview_template_svg(client):
+    response = client.get("/templates/a4_landscape/preview")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert "<svg" in response.text
+
+
+def test_preview_template_png(client):
+    response = client.get("/templates/a4_landscape/preview?format=png")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_preview_unknown_template_returns_404(client):
+    response = client.get("/templates/not-a-template/preview")
+    assert response.status_code == 404
+
+
+def test_insert_title_block_via_rest(client):
+    response = client.post(
+        "/tools/insert_title_block", json={"template_name": "a3_landscape", "title": "Sheet 1"}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert len(body["results"]) == 6  # border + box + 3 dividers + 1 text field

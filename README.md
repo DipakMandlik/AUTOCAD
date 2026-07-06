@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 238 tests, all run headlessly against the DXF backend
+pytest -v      # 260 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -87,13 +87,13 @@ uvicorn apps.api.main:app --reload
 ```
 
 Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
-tool explorer with live schemas, an SVG drawing preview with an
-accurate-render toggle, .scr/.lsp download buttons, a validate-only
-dry-run panel, a Projects panel for saving/loading drawings, a Logs panel
-showing every tool call this session, a Performance panel aggregating
-per-tool call counts/timing from those same logs, and a read-only
-Settings panel showing the effective runtime configuration), or use the
-API directly:
+tool explorer with live schemas, a Templates panel for inserting sheet
+borders/title blocks, an SVG drawing preview with an accurate-render
+toggle, .scr/.lsp download buttons, a validate-only dry-run panel, a
+Projects panel for saving/loading drawings, a Logs panel showing every
+tool call this session, a Performance panel aggregating per-tool call
+counts/timing from those same logs, and a read-only Settings panel
+showing the effective runtime configuration), or use the API directly:
 
 - `GET /health` — status + which backend is active
 - `GET /tools` — list every tool's name/description/JSON schema
@@ -114,6 +114,8 @@ API directly:
 - `POST /logs/clear` — clear the execution log
 - `GET /performance` — per-tool call counts/success rate/duration stats, aggregated from the same log
 - `GET /settings` — the effective runtime configuration this process resolved at startup (read-only)
+- `GET /templates` — list the available drawing-sheet templates (name/description/width/height)
+- `GET /templates/{name}/preview?format=svg|png` — render a template with sample field values, for the dashboard's template grid
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -163,7 +165,21 @@ Configure via an optional `config.json` in the working directory, or
 `export_script`, `export_lisp`, `create_project`, `list_projects`,
 `get_project`, `snapshot_project`, `load_project`, `list_symbols`,
 `insert_symbol`, `import_svg`, `get_execution_log`, `clear_execution_log`,
-`get_performance_stats`, `get_settings`.
+`get_performance_stats`, `get_settings`, `list_templates`,
+`insert_title_block`.
+
+`insert_title_block` inserts a sheet border + title block (`a4_landscape`,
+`a3_landscape`, `letter_landscape`; see `list_templates`), with optional
+`title`/`drawn_by`/`date`/`scale`/`sheet_number` text fields and an
+`origin` offset. The sheet sizes are the public-domain ISO 216/ANSI paper
+dimensions themselves, not a licensed title-block *standard* (exact zone
+layout, field codes, revision tables) — same distinction Phase 10's
+symbols draw against ANSI/IEC standards content (see
+`docs/architecture.md` Phase 15). Inserting one produces several expected
+`possible_collision` validator warnings, since a title block is
+inherently nested geometry (a box inside the border, dividers and text
+inside that box) — the insert still succeeds; these are warnings, not
+errors.
 
 Every one of these is recorded in the execution log the moment it
 returns (tool name, success/failure, message, duration) — including
@@ -230,6 +246,7 @@ Briefly:
 - `examples/plugins/` — a complete, runnable example plugin
 - `symbols/` — the built-in engineering symbol library (electrical/piping/architectural), `insert_symbol`/`list_symbols` tools sit on top
 - `imports/` — `svg_import.py`, a constrained SVG-to-`DrawingPlan` parser; the `import_svg` tool sits on top
+- `templates/` — parametrized drawing-sheet templates (border + title block); `insert_title_block`/`list_templates` tools sit on top
 - `apps/execution_log.py` — bounded, in-memory tool-call audit trail backing the dashboard's Logs panel (`get_execution_log`/`clear_execution_log`) and Performance panel (`get_performance_stats`)
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
@@ -247,24 +264,28 @@ this pass attempted.
 ## What's deferred
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
-for why): dashboard sections that need richer UI/backend support
-(Templates, Execution Queue — Logs, Performance, and Settings now exist,
-see "Available tools"/"REST" above, though Logs is a flat recent-calls
-list rather than a queryable/filterable one, Performance aggregates only
-the same bounded in-memory window rather than being a true cumulative
-historical metric, Settings is read-only with no live-editable API, and
-neither Logs nor Performance covers plugin-contributed tool calls);
+for why): the "Execution Queue" dashboard section (Templates, Logs,
+Performance, and Settings now exist, see "Available tools"/"REST"
+above, though Logs is a flat recent-calls list rather than a
+queryable/filterable one, Performance aggregates only the same bounded
+in-memory window rather than being a true cumulative historical metric,
+Settings is read-only with no live-editable API, Templates is one
+starter layout — a title block — not a general reusable-fragment system,
+and neither Logs nor Performance covers plugin-contributed tool calls);
 multi-format
 import beyond SVG (PDF/image/sketch/Excel — these need OCR/ML or
 heavyweight parsing this sandbox can't install or verify; `import_svg`,
 see "Available tools" above, covers plain, unstyled, ungrouped SVG only —
 `<g>`/element transforms and CSS fill/stroke-to-CAD-color mapping are
 gaps even within SVG); the ANSI/ISO/IEC/ASME/DIN/JIS standards
-knowledge base itself and symbol disciplines beyond electrical/piping/
-architectural (a starter symbol library across those three disciplines
-now exists — `symbols/`, see "Available tools" above — but the symbols
-are illustrative/recognizable, not verified against any standard's exact
-line weights, proportions, or annotation conventions); DWG export and
+knowledge base itself (title block *standards* — exact zone layout,
+field codes, revision tables — as opposed to `insert_title_block`'s
+plain public-domain paper dimensions) and symbol disciplines beyond
+electrical/piping/architectural (a starter symbol library across those
+three disciplines now exists — `symbols/`, see "Available tools"
+above — but the symbols are illustrative/recognizable, not verified
+against any standard's exact line weights, proportions, or annotation
+conventions); DWG export and
 hatch support in .scr/.lsp (DXF, SVG, PNG, SCR, and LISP all work now for
 non-hatch geometry); non-AutoCAD-family backends (FreeCAD, Fusion 360,
 etc.); true multi-document/multi-tenant project isolation; and

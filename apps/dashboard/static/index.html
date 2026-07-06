@@ -47,6 +47,25 @@
       </div>
 
       <div class="panel">
+        <h2>Templates</h2>
+        <p class="hint">Sheet border + title block; fill in fields below, then insert a sheet size.</p>
+        <div class="symbol-controls">
+          <input id="template-title" type="text" placeholder="title" />
+          <input id="template-drawn-by" type="text" placeholder="drawn by" />
+        </div>
+        <div class="symbol-controls">
+          <input id="template-date" type="text" placeholder="date" />
+          <input id="template-scale" type="text" placeholder="scale, e.g. 1:100" />
+          <input id="template-sheet" type="text" placeholder="sheet, e.g. 1/3" />
+        </div>
+        <div class="symbol-controls">
+          <input id="template-origin" type="text" placeholder="origin, e.g. 0,0" value="0,0" />
+        </div>
+        <div class="symbol-grid" id="template-grid"></div>
+        <div class="log" id="template-log"></div>
+      </div>
+
+      <div class="panel">
         <h2>Import SVG</h2>
         <p class="hint">
           Paste an SVG document (line/circle/ellipse/rect/polyline/polygon/text/
