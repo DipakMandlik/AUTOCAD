@@ -47,6 +47,20 @@
       </div>
 
       <div class="panel">
+        <h2>Import SVG</h2>
+        <p class="hint">
+          Paste an SVG document (line/circle/ellipse/rect/polyline/polygon/text/
+          straight-segment path); curves and transforms aren't supported yet.
+        </p>
+        <textarea id="svg-input" rows="5" spellcheck="false" placeholder='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">...</svg>'></textarea>
+        <div class="symbol-controls">
+          <input id="svg-layer" type="text" placeholder="layer override (optional)" />
+        </div>
+        <button id="svg-import-call">Import</button>
+        <div class="log" id="svg-import-log"></div>
+      </div>
+
+      <div class="panel">
         <h2>Projects</h2>
         <p class="hint">Snapshot the current drawing as a project, or load a saved one back in.</p>
         <div class="project-save">

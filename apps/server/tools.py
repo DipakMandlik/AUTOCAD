@@ -22,6 +22,7 @@ from engine.validator.engine import ValidationReport
 from engine.validator.issue import Issue
 from export.renderer import render_svg
 from export.script import render_lisp, render_scr, unsupported_entities
+from imports.svg_import import SvgImportError, import_svg
 from nlp.fallback import FallbackParser
 from storage.store import ProjectNotFoundError
 from symbols.library import SYMBOL_LIBRARY
@@ -362,6 +363,41 @@ def _handle_insert_symbol(arguments: Dict[str, Any], ctx: ServerContext) -> Dict
     }
 
 
+def _handle_import_svg(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    svg_content = arguments.get("svg_content")
+    if not svg_content:
+        return {"success": False, "message": "svg_content is required"}
+
+    try:
+        entities, import_warnings = import_svg(svg_content)
+    except SvgImportError as exc:
+        return {"success": False, "message": str(exc)}
+
+    layer = arguments.get("layer")
+    color = _resolve_color(arguments.get("color"), ctx.color_parser)
+    if layer is not None:
+        entities = [e.model_copy(update={"layer": layer}) for e in entities]
+    if color is not None:
+        entities = [e.model_copy(update={"color": color}) for e in entities]
+
+    plan = DrawingPlan(name="svg_import", operations=entities)
+    fixed_plan, report, applied_fixes, result = run_pipeline(plan, ctx)
+    if result is None:
+        issues = [issue_to_dict(i) for i in report.issues]
+        return {"success": False, "message": "validation failed", "issues": issues}
+    message = f"imported {len(result.results)} entities from SVG"
+    if import_warnings:
+        message += f" ({len(import_warnings)} element(s) skipped, see import_warnings)"
+    return {
+        "success": result.success,
+        "message": message,
+        "results": result_entries(fixed_plan, result),
+        "warnings": [issue_to_dict(i) for i in report.warnings],
+        "autofixed": [issue_to_dict(i) for i in applied_fixes],
+        "import_warnings": import_warnings,
+    }
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -661,6 +697,24 @@ TOOL_REGISTRY: List[ToolSpec] = [
             "required": ["symbol_name", "position"],
         },
         _handle_insert_symbol,
+    ),
+    ToolSpec(
+        "import_svg",
+        "Import a constrained subset of SVG (line/circle/ellipse/rect/polyline/polygon/text/"
+        "straight-segment path) as drawing entities",
+        {
+            "type": "object",
+            "properties": {
+                "svg_content": {"type": "string", "description": "raw SVG document text"},
+                "layer": {
+                    "type": "string",
+                    "description": "override layer for all imported entities (optional)",
+                },
+                "color": _common_props()["color"],
+            },
+            "required": ["svg_content"],
+        },
+        _handle_import_svg,
     ),
 ]
 

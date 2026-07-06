@@ -258,6 +258,33 @@ function setupSymbols() {
   });
 }
 
+// --- SVG import ----------------------------------------------------------
+
+function setupSvgImport() {
+  const log = document.getElementById("svg-import-log");
+  document.getElementById("svg-import-call").addEventListener("click", async () => {
+    const svgContent = document.getElementById("svg-input").value.trim();
+    if (!svgContent) {
+      logEntry(log, false, "import svg", "paste an SVG document first");
+      return;
+    }
+    const layer = document.getElementById("svg-layer").value.trim();
+    const args = { svg_content: svgContent };
+    if (layer) args.layer = layer;
+    try {
+      const result = await api("/tools/import_svg", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(args),
+      });
+      handleToolResult(result, log, "import_svg");
+      for (const skipped of result.import_warnings || []) logEntry(log, true, "skipped", skipped);
+    } catch (err) {
+      logEntry(log, false, "request failed", err.message);
+    }
+  });
+}
+
 // --- Projects ----------------------------------------------------------
 
 async function syncPreviewFromServer() {
@@ -507,6 +534,7 @@ async function init() {
   setupSaveAndClear();
   setupExportButtons();
   setupSymbols();
+  setupSvgImport();
   setupProjects();
   setupRenderToggle();
 }

@@ -438,6 +438,65 @@ standards, layer naming standards tied to a named standard like ISO 13567)
 is a content-curation effort orders of magnitude larger than a geometry
 generator and was not attempted here — see the deferred list below.
 
+## Phase 11: SVG import
+
+The master vision's "multi-format import" spans PDF, hand sketches, Excel,
+and more — most of that needs OCR/ML or heavyweight parsing libraries this
+sandbox can't install or verify. SVG is the one format that's already a
+CAD-adjacent, fully-specified vector format parseable with nothing beyond
+the standard library, so it's the genuinely-testable slice of that vision
+to build now; the rest stays on the deferred list.
+
+- **`imports/svg_import.py`**: `import_svg(svg_content) -> (entities,
+  warnings)` walks the XML tree with `xml.etree.ElementTree` and converts a
+  deliberately constrained element subset — `line`, `circle`, `ellipse`,
+  `rect`, `polyline`, `polygon`, `text`, and `path` restricted to the
+  straight-segment commands `M`/`L`/`H`/`V`/`Z` (both absolute and
+  relative) — into the same `Entity` models every other pipeline stage
+  uses. Curve commands (`C`/`S`/`Q`/`T`/`A`) are detected up front per
+  `<path>` and that path is skipped with a warning rather than
+  approximated with line segments, which would silently misrepresent the
+  original shape. Unrecognized elements (anything not in the list above,
+  e.g. `<foo>`, or a future `<image>`) produce a warning and are skipped;
+  purely structural elements (`<svg>`, `<g>`, `<defs>`, `<title>`, `<desc>`,
+  `<metadata>`, `<style>`) are silently ignored since they carry no
+  geometry of their own here.
+- **Coordinate system**: SVG's y-axis points down; CAD's points up. Every
+  coordinate is flipped against the document height, read from `viewBox`
+  first and the `height` attribute second; if neither is present the code
+  falls back to a plain sign flip (no reference height needed for the
+  shape to still come out right-side-up, just an arbitrary vertical
+  offset).
+- **Deliberately out of scope**: `<g>`/element `transform` attributes
+  (translate/rotate/scale/matrix) are not applied — a transformed group's
+  children import at their raw local coordinates. CSS/inline styling
+  (`fill`, `stroke`, class-based styles) is not mapped to CAD color/
+  lineweight; only an element's `id` attribute becomes its imported
+  `layer`. These are real gaps for anything beyond simple, ungrouped,
+  unstyled vector art, and are noted rather than silently producing wrong
+  geometry.
+- **Security**: SVG is XML, and XML entity expansion (billion-laughs) and
+  external entity resolution (XXE) are known attack classes for any format
+  built on it. `import_svg` rejects any document containing a `DOCTYPE` or
+  `ENTITY` declaration outright, and caps input size (2MB) before parsing
+  — cheap, defensible guards appropriate for a REST/MCP endpoint that
+  accepts arbitrary text from a caller.
+- **`import_svg` tool**: takes `svg_content` (+ optional `layer`/`color`
+  overrides applied to every imported entity), routes the resulting
+  multi-entity plan through the same `run_pipeline`/`result_entries` path
+  `insert_symbol` and `load_project` use, and returns per-import
+  `import_warnings` alongside the usual validation `warnings`/`autofixed`
+  — so a caller can tell "imported but I skipped 2 curve paths" apart from
+  a hard failure. No dedicated REST route was added; it's reachable at the
+  existing generic `POST /tools/import_svg`, same as most other tools.
+- **Dashboard "Import SVG" panel**: a textarea for pasting raw SVG plus an
+  optional layer override, wired through the shared `handleToolResult()`
+  so imported entities flow into the same live preview as everything else;
+  per-element `import_warnings` are logged individually. Verified live via
+  Playwright: pasting an SVG with a rect, a circle, and a curved path drew
+  the rect and circle into the preview at the correct flipped positions
+  and logged the curved path as skipped.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -446,7 +505,11 @@ section folder communicates nothing and just adds noise):
 
 - Dashboard sections that need richer UI/backend support: Templates,
   Execution Queue, Logs, Performance, Settings
-- Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
+- Multi-format import beyond SVG: PDF, raster image, hand sketch,
+  Excel/CSV, flowcharts — these need OCR/ML or heavyweight parsing this
+  sandbox can't install or verify (Phase 11 covers plain, unstyled,
+  ungrouped SVG; `<g>`/element transforms and CSS/fill/stroke-to-CAD-color
+  mapping are gaps even within SVG — see the Phase 11 scope boundary above)
 - The ANSI/ISO/IEC/ASME/DIN/JIS standards knowledge base itself (dimension
   rules, title block standards, named-standard layer conventions) — the
   symbol *library* now exists (Phase 10), but it is illustrative geometry,

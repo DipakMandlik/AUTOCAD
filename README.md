@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 185 tests, all run headlessly against the DXF backend
+pytest -v      # 213 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -120,6 +120,9 @@ curl -X POST localhost:8000/projects -H 'content-type: application/json' \
 
 curl localhost:8000/drawings/current/render?format=svg -o drawing.svg
 curl localhost:8000/drawings/current/export?format=scr -o drawing.scr
+
+curl -X POST localhost:8000/tools/import_svg -H 'content-type: application/json' \
+  -d '{"svg_content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><circle cx=\"5\" cy=\"5\" r=\"2\"/></svg>"}'
 ```
 
 ## Run the MCP server
@@ -152,7 +155,16 @@ Configure via an optional `config.json` in the working directory, or
 `get_current_drawing`, `clear_current_drawing`, `render_current_drawing`,
 `export_script`, `export_lisp`, `create_project`, `list_projects`,
 `get_project`, `snapshot_project`, `load_project`, `list_symbols`,
-`insert_symbol`.
+`insert_symbol`, `import_svg`.
+
+`import_svg` accepts a raw SVG document and converts a constrained element
+subset (`line`/`circle`/`ellipse`/`rect`/`polyline`/`polygon`/`text`, and
+`path` restricted to straight-segment commands `M`/`L`/`H`/`V`/`Z`) into
+drawing entities — curved path commands and any other unsupported element
+are skipped with a warning rather than approximated, and `<g>`/element
+`transform` attributes and CSS styling aren't applied (see
+`docs/architecture.md` Phase 11). There's no dedicated REST route for it;
+it's reachable at the generic `POST /tools/import_svg`, same as most tools.
 
 `export_script`/`export_lisp` generate an AutoCAD Script (.scr) or
 AutoLISP (.lsp) file — the one path to real AutoCAD that needs neither
@@ -185,6 +197,7 @@ Briefly:
 - `plugins/` — the Plugin SDK: `Plugin` data shape + file-based discovery/apply
 - `examples/plugins/` — a complete, runnable example plugin
 - `symbols/` — the built-in engineering symbol library (electrical/piping/architectural), `insert_symbol`/`list_symbols` tools sit on top
+- `imports/` — `svg_import.py`, a constrained SVG-to-`DrawingPlan` parser; the `import_svg` tool sits on top
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
@@ -203,7 +216,11 @@ this pass attempted.
 Per the master platform vision, not built yet (see `docs/architecture.md`
 for why): dashboard sections that need richer UI/backend support
 (Templates, Execution Queue, Logs, Performance, Settings); multi-format
-import (PDF/image/sketch/Excel); the ANSI/ISO/IEC/ASME/DIN/JIS standards
+import beyond SVG (PDF/image/sketch/Excel — these need OCR/ML or
+heavyweight parsing this sandbox can't install or verify; `import_svg`,
+see "Available tools" above, covers plain, unstyled, ungrouped SVG only —
+`<g>`/element transforms and CSS fill/stroke-to-CAD-color mapping are
+gaps even within SVG); the ANSI/ISO/IEC/ASME/DIN/JIS standards
 knowledge base itself and symbol disciplines beyond electrical/piping/
 architectural (a starter symbol library across those three disciplines
 now exists — `symbols/`, see "Available tools" above — but the symbols

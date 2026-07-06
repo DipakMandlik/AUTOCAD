@@ -29,7 +29,7 @@ def test_registry_has_expected_tools():
         "get_current_drawing", "clear_current_drawing", "render_current_drawing",
         "export_script", "export_lisp",
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
-        "list_symbols", "insert_symbol",
+        "list_symbols", "insert_symbol", "import_svg",
     }
 
 
@@ -281,3 +281,50 @@ def test_insert_symbol_scale_and_rotation_are_applied(ctx):
     )
     circle = next(e["entity"] for e in result["results"] if e["entity_type"] == "circle")
     assert circle["radius"] == pytest.approx(1.5)  # local radius 0.5 * scale 3
+
+
+def test_import_svg_tool_draws_entities(ctx):
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+        '<line x1="0" y1="0" x2="10" y2="10"/><circle cx="5" cy="5" r="2"/>'
+        "</svg>"
+    )
+    result = TOOLS_BY_NAME["import_svg"].handler({"svg_content": svg}, ctx)
+    assert result["success"] is True
+    assert len(result["results"]) == 2
+    assert len(ctx.history) == 2
+    assert result["import_warnings"] == []
+
+
+def test_import_svg_tool_reports_skipped_elements(ctx):
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+        '<circle cx="5" cy="5" r="2"/><path d="M0,0 C1,1 2,2 3,3"/>'
+        "</svg>"
+    )
+    result = TOOLS_BY_NAME["import_svg"].handler({"svg_content": svg}, ctx)
+    assert result["success"] is True
+    assert len(result["results"]) == 1
+    assert len(result["import_warnings"]) == 1
+    assert "skipped" in result["message"]
+
+
+def test_import_svg_tool_applies_layer_and_color(ctx):
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><circle cx="5" cy="5" r="2"/></svg>'
+    result = TOOLS_BY_NAME["import_svg"].handler(
+        {"svg_content": svg, "layer": "imported", "color": "red"}, ctx
+    )
+    entity = result["results"][0]["entity"]
+    assert entity["layer"] == "imported"
+    assert entity["color"] == 1
+
+
+def test_import_svg_tool_missing_content_fails_cleanly(ctx):
+    result = TOOLS_BY_NAME["import_svg"].handler({}, ctx)
+    assert result["success"] is False
+
+
+def test_import_svg_tool_invalid_svg_fails_cleanly(ctx):
+    result = TOOLS_BY_NAME["import_svg"].handler({"svg_content": "<svg><line x1=0/></svg>"}, ctx)
+    assert result["success"] is False
+    assert "invalid SVG" in result["message"]

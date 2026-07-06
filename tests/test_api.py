@@ -299,3 +299,22 @@ def test_insert_symbol_via_rest(client):
     body = response.json()
     assert body["success"] is True
     assert len(body["results"]) == 2
+
+
+def test_import_svg_via_rest(client):
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
+        '<circle cx="5" cy="5" r="2"/><rect x="1" y="1" width="2" height="2"/>'
+        "</svg>"
+    )
+    response = client.post("/tools/import_svg", json={"svg_content": svg})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert len(body["results"]) == 2
+
+
+def test_import_svg_via_rest_rejects_bad_xml(client):
+    response = client.post("/tools/import_svg", json={"svg_content": "<svg><line x1=0/></svg>"})
+    assert response.status_code == 200
+    assert response.json()["success"] is False
