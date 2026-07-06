@@ -446,6 +446,10 @@ def _handle_get_performance_stats(arguments: Dict[str, Any], ctx: ServerContext)
     }
 
 
+def _handle_get_settings(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    return {"success": True, "settings": ctx.settings.model_dump()}
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -787,6 +791,13 @@ TOOL_REGISTRY: List[ToolSpec] = [
         "(same bounded window as get_execution_log, not a persisted historical metric)",
         {"type": "object", "properties": {}},
         _handle_get_performance_stats,
+    ),
+    ToolSpec(
+        "get_settings",
+        "Return the effective runtime configuration (backend, output/storage/plugins directories) "
+        "this process resolved at startup — read-only, no live settings API",
+        {"type": "object", "properties": {}},
+        _handle_get_settings,
     ),
 ]
 

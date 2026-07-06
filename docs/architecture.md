@@ -581,6 +581,40 @@ already exists, with zero new state to manage.
   correct per-tool counts (`draw_circle` showing 0 successes / 1 failure)
   and a correct overall success rate.
 
+## Phase 14: Settings (dashboard "Settings" section)
+
+The simplest of the three observability-dashboard phases: there was
+already a single validated `Settings` object (`config.py`, Phase 5)
+resolved once at process startup — this phase just makes it visible
+rather than buried in whatever `config.json`/env vars produced it.
+
+- **`ServerContext.settings`**: the resolved `Settings` instance is now
+  threaded through `build_context()` onto the context, alongside the
+  pieces already derived from it (`backend`, `project_store`). Defaults
+  to `field(default_factory=Settings)` so every existing test fixture
+  that constructs a bare `ServerContext(...)` without a `settings=` kwarg
+  keeps working unchanged — same pattern `history`/`execution_log` used.
+- **`get_settings` tool + `GET /settings`**: returns `ctx.settings
+  .model_dump()` as-is. Nothing in `Settings` is a secret (backend name,
+  local directory paths, server name/version) so no redaction logic was
+  needed — worth noting explicitly, since a settings-exposure endpoint is
+  exactly the kind of thing that *would* need redaction if a future
+  setting held credentials.
+- **Read-only, deliberately no live-editable settings API**: `cad.backend`
+  is already baked into the constructed `CADBackend` instance by the time
+  `get_settings` could return it, so exposing a `PATCH /settings` that
+  "changed" the backend would just be misleading — it can't take effect
+  without reconstructing the whole `ServerContext`. Changing any setting
+  still means editing `config.json`/env vars and restarting, same as
+  before this phase; this just makes the *current* resolved values
+  visible instead of requiring the operator to go find the file.
+- **Dashboard "Settings" panel**: a read-only formatted JSON view, loaded
+  once at `init()` — no refresh button, since nothing here can change
+  without a process restart (unlike Logs/Performance, which are legitimately
+  live). Verified live via Playwright: the panel showed the real resolved
+  `cad.backend`, `output.directory`, `storage.directory`, and
+  `plugins.directory` values.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -588,10 +622,11 @@ placeholder directories were created for them (an empty `dashboard`
 section folder communicates nothing and just adds noise):
 
 - Dashboard sections that need richer UI/backend support: Templates,
-  Execution Queue, Settings (Logs and Performance now exist — Phases 12
-  and 13 — though Logs is a flat recent-calls list rather than a
-  queryable/filterable one, and Performance aggregates only the same
-  bounded in-memory window, not a true cumulative historical metric)
+  Execution Queue (Logs, Performance, and Settings now exist — Phases 12,
+  13, and 14 — though Logs is a flat recent-calls list rather than a
+  queryable/filterable one, Performance aggregates only the same bounded
+  in-memory window rather than a true cumulative historical metric, and
+  Settings is read-only with no live-editable API)
 - Multi-format import beyond SVG: PDF, raster image, hand sketch,
   Excel/CSV, flowcharts — these need OCR/ML or heavyweight parsing this
   sandbox can't install or verify (Phase 11 covers plain, unstyled,

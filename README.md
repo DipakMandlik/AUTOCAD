@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 234 tests, all run headlessly against the DXF backend
+pytest -v      # 238 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -90,9 +90,10 @@ Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
 tool explorer with live schemas, an SVG drawing preview with an
 accurate-render toggle, .scr/.lsp download buttons, a validate-only
 dry-run panel, a Projects panel for saving/loading drawings, a Logs panel
-showing every tool call this session, and a Performance panel aggregating
-per-tool call counts/timing from those same logs), or use the API
-directly:
+showing every tool call this session, a Performance panel aggregating
+per-tool call counts/timing from those same logs, and a read-only
+Settings panel showing the effective runtime configuration), or use the
+API directly:
 
 - `GET /health` — status + which backend is active
 - `GET /tools` — list every tool's name/description/JSON schema
@@ -112,6 +113,7 @@ directly:
 - `GET /logs?limit=N` — recent tool calls (successful or not), most-recent-last
 - `POST /logs/clear` — clear the execution log
 - `GET /performance` — per-tool call counts/success rate/duration stats, aggregated from the same log
+- `GET /settings` — the effective runtime configuration this process resolved at startup (read-only)
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -161,7 +163,7 @@ Configure via an optional `config.json` in the working directory, or
 `export_script`, `export_lisp`, `create_project`, `list_projects`,
 `get_project`, `snapshot_project`, `load_project`, `list_symbols`,
 `insert_symbol`, `import_svg`, `get_execution_log`, `clear_execution_log`,
-`get_performance_stats`.
+`get_performance_stats`, `get_settings`.
 
 Every one of these is recorded in the execution log the moment it
 returns (tool name, success/failure, message, duration) — including
@@ -178,6 +180,14 @@ computation over existing data, not a separate metrics store. It reflects
 only whatever is currently in the log's bounded window (see
 `docs/architecture.md` Phase 13), so it's not a true cumulative
 historical metric once older entries get evicted.
+
+`get_settings` returns the effective `Settings` (backend, output/storage/
+plugins directories, server name/version) this process resolved at
+startup — read-only, no secrets in this config so no redaction is needed.
+There's no live-editable settings API: `cad.backend` is already baked
+into the constructed backend instance by the time this tool could return
+it, so changing any setting still means editing `config.json`/env vars
+and restarting (see `docs/architecture.md` Phase 14).
 
 `import_svg` accepts a raw SVG document and converts a constrained element
 subset (`line`/`circle`/`ellipse`/`rect`/`polyline`/`polygon`/`text`, and
@@ -225,7 +235,7 @@ Briefly:
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
 - `apps/dashboard/` — static web UI served by the REST API at `/dashboard`
-- `config.py` — single validated settings source
+- `config.py` — single validated settings source; also exposed read-only via `get_settings`/`GET /settings` and the dashboard's Settings panel
 
 Note on persistence scope: there is still exactly one live backend document
 per process. Saving/loading projects snapshots and restores a `DrawingPlan`,
@@ -238,11 +248,12 @@ this pass attempted.
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
 for why): dashboard sections that need richer UI/backend support
-(Templates, Execution Queue, Settings — Logs and Performance now exist,
+(Templates, Execution Queue — Logs, Performance, and Settings now exist,
 see "Available tools"/"REST" above, though Logs is a flat recent-calls
 list rather than a queryable/filterable one, Performance aggregates only
 the same bounded in-memory window rather than being a true cumulative
-historical metric, and neither covers plugin-contributed tool calls);
+historical metric, Settings is read-only with no live-editable API, and
+neither Logs nor Performance covers plugin-contributed tool calls);
 multi-format
 import beyond SVG (PDF/image/sketch/Excel — these need OCR/ML or
 heavyweight parsing this sandbox can't install or verify; `import_svg`,

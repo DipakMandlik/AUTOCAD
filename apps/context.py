@@ -37,6 +37,13 @@ class ServerContext:
     # reads from this. Bounded and process-lifetime only; see
     # apps/execution_log.py.
     execution_log: ExecutionLog = field(default_factory=ExecutionLog)
+    # The effective config this process resolved at startup — read-only;
+    # the dashboard's "Settings" section displays it as-is. There is no
+    # live-editable settings API: changing it means editing config.json/
+    # env vars and restarting, same as any other setting here (e.g.
+    # cad.backend can't change without restarting anyway, since the
+    # backend instance above is already constructed from it).
+    settings: Settings = field(default_factory=Settings)
 
 
 def build_context(settings: Settings) -> ServerContext:
@@ -55,6 +62,7 @@ def build_context(settings: Settings) -> ServerContext:
         backend=backend,
         color_parser=FallbackParser(),
         project_store=ProjectStore(settings.storage.directory),
+        settings=settings,
     )
 
 

@@ -30,7 +30,7 @@ def test_registry_has_expected_tools():
         "export_script", "export_lisp",
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
         "list_symbols", "insert_symbol", "import_svg",
-        "get_execution_log", "clear_execution_log", "get_performance_stats",
+        "get_execution_log", "clear_execution_log", "get_performance_stats", "get_settings",
     }
 
 
@@ -397,3 +397,21 @@ def test_get_performance_stats_empty_log(ctx):
     assert result["tools"] == []
     assert result["total_calls"] == 0
     assert result["overall_success_rate"] is None
+
+
+def test_get_settings_tool(ctx):
+    result = TOOLS_BY_NAME["get_settings"].handler({}, ctx)
+    assert result["success"] is True
+    settings = result["settings"]
+    assert settings["cad"]["backend"] == "dxf"
+    assert "directory" in settings["output"]
+    assert "directory" in settings["storage"]
+    assert "directory" in settings["plugins"]
+
+
+def test_get_settings_reflects_ctx_settings(ctx):
+    from config import CADSettings, Settings
+
+    ctx.settings = Settings(cad=CADSettings(backend="dxf", startup_wait_time=5.0))
+    result = TOOLS_BY_NAME["get_settings"].handler({}, ctx)
+    assert result["settings"]["cad"]["startup_wait_time"] == 5.0

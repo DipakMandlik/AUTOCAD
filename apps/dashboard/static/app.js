@@ -596,12 +596,26 @@ function setupRenderToggle() {
   });
 }
 
+// --- Settings ------------------------------------------------------------
+// Read-only: the config was resolved once at process startup, so there's
+// nothing to refresh here after the initial load.
+
+async function loadSettings() {
+  try {
+    const result = await api("/settings");
+    document.getElementById("settings-view").textContent = JSON.stringify(result.settings, null, 2);
+  } catch (err) {
+    document.getElementById("settings-view").textContent = `failed to load settings: ${err.message}`;
+  }
+}
+
 async function init() {
   await refreshHealth();
   await loadTools();
   await loadSymbols();
   await loadProjects();
   await syncPreviewFromServer();
+  await loadSettings();
   setupChat();
   setupToolCaller();
   setupValidator();

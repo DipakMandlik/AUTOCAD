@@ -261,3 +261,21 @@ def test_build_context_passes_configured_plugin_directory_to_loader(monkeypatch,
     build_context(settings)
 
     assert calls == ["/configured/plugin/dir"]
+
+
+def test_build_context_threads_settings_onto_server_context(monkeypatch, tmp_path):
+    from apps.context import build_context
+    from config import Settings
+
+    monkeypatch.setattr(
+        "plugins.loader.discover_and_apply",
+        lambda directory, tool_registry, tools_by_name, validation_rules, register_fn: [],
+    )
+
+    settings = Settings(
+        output={"directory": str(tmp_path / "output")},
+        storage={"directory": str(tmp_path / "projects")},
+    )
+    ctx = build_context(settings)
+
+    assert ctx.settings is settings
