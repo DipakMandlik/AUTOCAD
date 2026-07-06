@@ -10,6 +10,7 @@ as a ground-up redesign. See:
 
 - [`docs/architecture-review.md`](docs/architecture-review.md) — analysis of the original repository
 - [`docs/architecture.md`](docs/architecture.md) — the redesigned architecture and rationale
+- [`docs/LOCAL_AUTOCAD_TESTING.md`](docs/LOCAL_AUTOCAD_TESTING.md) — set up locally and verify the never-yet-tested `autocad` backend against a real Windows AutoCAD install
 
 ## Current scope
 
