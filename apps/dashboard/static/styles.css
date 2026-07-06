@@ -127,6 +127,34 @@ button:hover { background: var(--accent-strong); }
 .project-card button { padding: 0.3rem 0.6rem; font-size: 0.75rem; }
 
 button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
+
+.symbol-controls { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+.symbol-controls input { flex: 1; min-width: 0; }
+
+.symbol-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.symbol-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.symbol-card img {
+  width: 100%;
+  height: 4.5rem;
+  object-fit: contain;
+  background: #212830;
+  border-radius: 4px;
+}
+.symbol-card .symbol-name { font-size: 0.75rem; font-weight: 600; }
+.symbol-card .meta { color: var(--muted); font-size: 0.68rem; }
+.symbol-card button { width: 100%; padding: 0.25rem 0; font-size: 0.72rem; }
 button.secondary:hover { background: var(--border); }
 
 #tool-select { margin-bottom: 0.5rem; }

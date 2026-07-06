@@ -35,6 +35,18 @@
       </div>
 
       <div class="panel">
+        <h2>Symbols</h2>
+        <p class="hint">Reusable engineering symbols; insert at a position with optional scale/rotation.</p>
+        <div class="symbol-controls">
+          <input id="symbol-position" type="text" placeholder="position, e.g. 0,0" value="0,0" />
+          <input id="symbol-scale" type="text" placeholder="scale" value="1" />
+          <input id="symbol-rotation" type="text" placeholder="rotation°" value="0" />
+        </div>
+        <div class="symbol-grid" id="symbol-grid"></div>
+        <div class="log" id="symbol-log"></div>
+      </div>
+
+      <div class="panel">
         <h2>Projects</h2>
         <p class="hint">Snapshot the current drawing as a project, or load a saved one back in.</p>
         <div class="project-save">

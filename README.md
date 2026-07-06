@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 153 tests, all run headlessly against the DXF backend
+pytest -v      # 185 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -105,6 +105,8 @@ the API directly:
 - `GET /projects/{id}/render?format=svg|png` — render a saved project's plan
 - `GET /drawings/current/export?format=scr|lisp` — download an AutoCAD Script or AutoLISP file (hatch entities are skipped, see below)
 - `GET /projects/{id}/export?format=scr|lisp` — same, for a saved project
+- `GET /symbols` — list the built-in symbol library (name/discipline/description)
+- `GET /symbols/{name}/preview?format=svg|png` — render a symbol in isolation, for the dashboard's symbol grid
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -149,7 +151,8 @@ Configure via an optional `config.json` in the working directory, or
 `save_drawing`, `create_layer`, `process_command` (natural language),
 `get_current_drawing`, `clear_current_drawing`, `render_current_drawing`,
 `export_script`, `export_lisp`, `create_project`, `list_projects`,
-`get_project`, `snapshot_project`, `load_project`.
+`get_project`, `snapshot_project`, `load_project`, `list_symbols`,
+`insert_symbol`.
 
 `export_script`/`export_lisp` generate an AutoCAD Script (.scr) or
 AutoLISP (.lsp) file — the one path to real AutoCAD that needs neither
@@ -181,6 +184,7 @@ Briefly:
 - `export/` — `render_svg`/`render_png` (real, CAD-accurate rendering via ezdxf's drawing addon) and `render_scr`/`render_lisp` (AutoCAD Script / AutoLISP generation, unverified)
 - `plugins/` — the Plugin SDK: `Plugin` data shape + file-based discovery/apply
 - `examples/plugins/` — a complete, runnable example plugin
+- `symbols/` — the built-in engineering symbol library (electrical/piping/architectural), `insert_symbol`/`list_symbols` tools sit on top
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
@@ -198,10 +202,14 @@ this pass attempted.
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
 for why): dashboard sections that need richer UI/backend support
-(Templates, Symbol Libraries, Execution Queue, Logs, Performance,
-Settings); multi-format import (PDF/image/sketch/Excel); symbol libraries
-and the ANSI/ISO/IEC standards knowledge base; DWG export and hatch
-support in .scr/.lsp (DXF, SVG, PNG, SCR, and LISP all work now for
+(Templates, Execution Queue, Logs, Performance, Settings); multi-format
+import (PDF/image/sketch/Excel); the ANSI/ISO/IEC/ASME/DIN/JIS standards
+knowledge base itself and symbol disciplines beyond electrical/piping/
+architectural (a starter symbol library across those three disciplines
+now exists — `symbols/`, see "Available tools" above — but the symbols
+are illustrative/recognizable, not verified against any standard's exact
+line weights, proportions, or annotation conventions); DWG export and
+hatch support in .scr/.lsp (DXF, SVG, PNG, SCR, and LISP all work now for
 non-hatch geometry); non-AutoCAD-family backends (FreeCAD, Fusion 360,
 etc.); true multi-document/multi-tenant project isolation; and
 plugin-provided CAD backends as the selectable default session backend

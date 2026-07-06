@@ -258,3 +258,44 @@ def test_export_project(client):
 def test_export_unknown_project_returns_404(client):
     response = client.get("/projects/does-not-exist/export")
     assert response.status_code == 404
+
+
+def test_list_symbols(client):
+    response = client.get("/symbols")
+    assert response.status_code == 200
+    names = {s["name"] for s in response.json()["symbols"]}
+    assert {"resistor", "gate_valve", "door_swing"} <= names
+
+
+def test_preview_symbol_svg(client):
+    response = client.get("/symbols/resistor/preview")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert "<svg" in response.text
+
+
+def test_preview_symbol_png(client):
+    response = client.get("/symbols/resistor/preview?format=png&scale=2&rotation=45")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_preview_unknown_symbol_returns_404(client):
+    response = client.get("/symbols/not-a-symbol/preview")
+    assert response.status_code == 404
+
+
+def test_preview_rejects_non_positive_scale(client):
+    response = client.get("/symbols/resistor/preview?scale=0")
+    assert response.status_code == 422
+
+
+def test_insert_symbol_via_rest(client):
+    response = client.post(
+        "/tools/insert_symbol", json={"symbol_name": "north_arrow", "position": [0, 0], "rotation": 30}
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert len(body["results"]) == 2

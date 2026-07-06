@@ -390,6 +390,54 @@ fail that validation. Solving this would mean loading plugins before
 parsing config, which has its own ordering problems (where would the
 plugins-directory setting come from?); not attempted here.
 
+## Phase 10: Symbol library
+
+The master vision's "reusable engineering libraries" section, scoped down
+from an exhaustive per-discipline catalog (mechanical, electrical, P&ID,
+hydraulic, pneumatic, civil, architectural, HVAC, structural, pipeline,
+instrumentation, networking, industrial automation, warehouse,
+manufacturing — fifteen disciplines) to nine real, recognizable, tested
+symbols across three: electrical (resistor, capacitor, ground,
+battery cell), piping/P&ID (gate valve, pump), and architectural (door
+swing, window, north arrow). The point of this phase was proving the
+*pattern* generalizes, not exhausting the catalog — adding a tenth symbol
+is one function and one catalog entry, not a new subsystem.
+
+- **`symbols/library.py`**: each symbol is authored once, in a canonical
+  local coordinate space, as a plain function `(origin, scale, rotation)
+  -> List[Entity]`. `_transform()` handles scale-then-rotate-then-translate
+  uniformly for points; `ArcEntity`'s start/end angles need the rotation
+  added directly, since the entity model stores absolute angles rather
+  than an angle relative to a local frame. `SymbolDefinition` pairs a
+  builder with catalog metadata (discipline, description) in
+  `SYMBOL_LIBRARY`, a plain dict — no registry abstraction needed, since
+  unlike `CADBackend` there's no reason to swap the whole symbol set at
+  runtime.
+- **`insert_symbol`/`list_symbols` tools + `GET /symbols`,
+  `GET /symbols/{name}/preview`**. `insert_symbol` is the first built-in
+  tool whose response is genuinely multi-entity (a capacitor is 4
+  separate `LineEntity`s), so its handler uses `run_pipeline`/
+  `result_entries` directly — the same pattern `load_project` already
+  established — rather than the single-entity `execute_plan` every
+  `draw_*` tool uses. `/symbols/{name}/preview` reuses `export.renderer`
+  as-is: no symbol-specific rendering code, just a `DrawingPlan` built
+  from one symbol at the origin.
+- **Dashboard "Symbols" panel**: a 3-column grid of catalog cards, each
+  with a live `<img src="/symbols/{name}/preview?format=svg">` thumbnail
+  and an "Insert" button using a shared position/scale/rotation input.
+  Verified with Playwright that all 9 thumbnails actually load (not
+  broken `<img>` tags) and that inserting a symbol draws the right entity
+  count into the live preview.
+
+**Scope boundary, stated plainly**: these are illustrative, recognizable
+symbols, not literally ANSI/ISO/IEC-compliant ones — exact stroke widths,
+proportions, and the approved symbol sets per discipline are licensed
+standards documents (ASME Y14.5, IEC 60617, etc.) this project has no
+access to. A real standards knowledge base (dimension rules, title block
+standards, layer naming standards tied to a named standard like ISO 13567)
+is a content-curation effort orders of magnitude larger than a geometry
+generator and was not attempted here — see the deferred list below.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -397,9 +445,16 @@ placeholder directories were created for them (an empty `dashboard`
 section folder communicates nothing and just adds noise):
 
 - Dashboard sections that need richer UI/backend support: Templates,
-  Symbol Libraries, Execution Queue, Logs, Performance, Settings
+  Execution Queue, Logs, Performance, Settings
 - Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
-- Symbol libraries / ANSI-ISO-IEC standards knowledge base
+- The ANSI/ISO/IEC/ASME/DIN/JIS standards knowledge base itself (dimension
+  rules, title block standards, named-standard layer conventions) — the
+  symbol *library* now exists (Phase 10), but it is illustrative geometry,
+  not licensed standards content
+- Additional symbol disciplines beyond electrical/piping/architectural
+  (mechanical, hydraulic, pneumatic, civil, HVAC, structural,
+  instrumentation, networking, industrial automation, warehouse,
+  manufacturing) — same pattern as Phase 10, just more of them
 - DWG export and hatch support in `.scr`/`.lsp` (DXF, SVG, PNG, SCR, and
   LISP all work now for non-hatch geometry)
 - FreeCAD/Fusion/SolidWorks/Revit backends (the `CADBackend` interface is

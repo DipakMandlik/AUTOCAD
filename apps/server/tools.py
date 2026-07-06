@@ -24,6 +24,7 @@ from export.renderer import render_svg
 from export.script import render_lisp, render_scr, unsupported_entities
 from nlp.fallback import FallbackParser
 from storage.store import ProjectNotFoundError
+from symbols.library import SYMBOL_LIBRARY
 
 __all__ = [
     "ServerContext",
@@ -315,6 +316,52 @@ def _handle_load_project(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[
     }
 
 
+def _handle_list_symbols(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    return {
+        "success": True,
+        "symbols": [
+            {"name": d.name, "discipline": d.discipline, "description": d.description}
+            for d in SYMBOL_LIBRARY.values()
+        ],
+    }
+
+
+def _handle_insert_symbol(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    symbol_name = arguments.get("symbol_name")
+    definition = SYMBOL_LIBRARY.get(symbol_name)
+    if definition is None:
+        known = sorted(SYMBOL_LIBRARY)
+        return {"success": False, "message": f"unknown symbol {symbol_name!r}; known symbols: {known}"}
+
+    position = arguments.get("position", (0.0, 0.0, 0.0))
+    scale = arguments.get("scale", 1.0)
+    rotation = arguments.get("rotation", 0.0)
+    layer = arguments.get("layer")
+    color = _resolve_color(arguments.get("color"), ctx.color_parser)
+
+    entities = definition.build(position, scale, rotation)
+    if layer is not None:
+        entities = [e.model_copy(update={"layer": layer}) for e in entities]
+    if color is not None:
+        entities = [e.model_copy(update={"color": color}) for e in entities]
+
+    # A symbol is usually more than one entity (e.g. a capacitor's two
+    # plates and two leads), so this goes through run_pipeline/
+    # result_entries directly rather than the single-entity execute_plan.
+    plan = DrawingPlan(name=symbol_name, operations=entities)
+    fixed_plan, report, applied_fixes, result = run_pipeline(plan, ctx)
+    if result is None:
+        issues = [issue_to_dict(i) for i in report.issues]
+        return {"success": False, "message": "validation failed", "issues": issues}
+    return {
+        "success": result.success,
+        "message": f"inserted symbol '{symbol_name}' ({len(result.results)} entities)",
+        "results": result_entries(fixed_plan, result),
+        "warnings": [issue_to_dict(i) for i in report.warnings],
+        "autofixed": [issue_to_dict(i) for i in applied_fixes],
+    }
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -592,6 +639,28 @@ TOOL_REGISTRY: List[ToolSpec] = [
             "required": ["project_id"],
         },
         _handle_load_project,
+    ),
+    ToolSpec(
+        "list_symbols",
+        "List the available engineering symbols (electrical, piping, architectural)",
+        {"type": "object", "properties": {}},
+        _handle_list_symbols,
+    ),
+    ToolSpec(
+        "insert_symbol",
+        "Insert a symbol from the library at a position, with optional scale/rotation/layer/color",
+        {
+            "type": "object",
+            "properties": {
+                "symbol_name": {"type": "string", "description": "see list_symbols"},
+                "position": _point_schema("insertion point [x, y, (z)]"),
+                "scale": {"type": "number", "description": "uniform scale factor (optional, default 1.0)"},
+                "rotation": {"type": "number", "description": "rotation angle in degrees (optional)"},
+                **_common_props(),
+            },
+            "required": ["symbol_name", "position"],
+        },
+        _handle_insert_symbol,
     ),
 ]
 

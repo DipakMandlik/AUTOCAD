@@ -25,6 +25,7 @@ from engine.geometry.primitives import DrawingPlan
 from export.renderer import render_png, render_svg
 from export.script import render_lisp, render_scr
 from storage.store import ProjectNotFoundError, ProjectStore
+from symbols.library import SYMBOL_LIBRARY
 
 DASHBOARD_STATIC_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "static"
 
@@ -171,6 +172,26 @@ def create_app(ctx: ServerContext) -> FastAPI:
     ) -> Response:
         project = _get_project_or_404(ctx.project_store, project_id)
         return _export_response(project.plan, script_format)
+
+    @app.get("/symbols")
+    def list_symbols() -> Dict[str, Any]:
+        return TOOLS_BY_NAME["list_symbols"].handler({}, ctx)
+
+    @app.get("/symbols/{symbol_name}/preview")
+    def preview_symbol(
+        symbol_name: str,
+        image_format: str = Query("svg", alias="format", pattern="^(svg|png)$"),
+        scale: float = Query(1.0, gt=0),
+        rotation: float = Query(0.0),
+    ) -> Response:
+        """Render one symbol in isolation — a quick visual sanity check,
+        independent of any drawing history. Reuses the same renderer as
+        /drawings/current/render; no symbol-specific rendering code."""
+        definition = SYMBOL_LIBRARY.get(symbol_name)
+        if definition is None:
+            raise HTTPException(status_code=404, detail=f"unknown symbol '{symbol_name}'")
+        plan = DrawingPlan(operations=definition.build((0.0, 0.0, 0.0), scale, rotation))
+        return _render_response(plan, image_format)
 
     if DASHBOARD_STATIC_DIR.is_dir():
         app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")

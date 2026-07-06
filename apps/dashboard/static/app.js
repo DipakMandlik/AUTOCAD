@@ -64,6 +64,13 @@ function showSchema() {
 
 function handleToolResult(result, logContainer, contextLabel) {
   if (result.entity) state.entities.push(result.entity);
+  // multi-entity responses (e.g. insert_symbol) carry a `results` array
+  // instead of a single top-level `entity`
+  if (Array.isArray(result.results)) {
+    for (const r of result.results) {
+      if (r.entity) state.entities.push(r.entity);
+    }
+  }
   if (result.success) {
     refreshPreview();
     logEntry(logContainer, true, contextLabel, result.message || "ok");
@@ -206,6 +213,49 @@ function setupExportButtons() {
 
   document.getElementById("export-scr").addEventListener("click", () => exportAndDownload("export_script", "scr"));
   document.getElementById("export-lisp").addEventListener("click", () => exportAndDownload("export_lisp", "lisp"));
+}
+
+// --- Symbols -------------------------------------------------------------
+
+async function loadSymbols() {
+  const result = await api("/symbols");
+  const grid = document.getElementById("symbol-grid");
+  grid.innerHTML = "";
+  for (const symbol of result.symbols) {
+    const card = document.createElement("div");
+    card.className = "symbol-card";
+    card.innerHTML = `
+      <img src="/symbols/${symbol.name}/preview?format=svg" alt="${symbol.name}" loading="lazy" />
+      <div class="symbol-name">${symbol.name}</div>
+      <div class="meta">${symbol.discipline}</div>
+      <button data-symbol="${symbol.name}">Insert</button>`;
+    grid.appendChild(card);
+  }
+}
+
+function setupSymbols() {
+  const log = document.getElementById("symbol-log");
+  document.getElementById("symbol-grid").addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-symbol]");
+    if (!button) return;
+    const symbolName = button.dataset.symbol;
+
+    const positionText = document.getElementById("symbol-position").value.trim() || "0,0";
+    const position = positionText.split(",").map((n) => parseFloat(n.trim()) || 0);
+    const scale = parseFloat(document.getElementById("symbol-scale").value) || 1;
+    const rotation = parseFloat(document.getElementById("symbol-rotation").value) || 0;
+
+    try {
+      const result = await api("/tools/insert_symbol", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ symbol_name: symbolName, position, scale, rotation }),
+      });
+      handleToolResult(result, log, `insert ${symbolName}`);
+    } catch (err) {
+      logEntry(log, false, "insert failed", err.message);
+    }
+  });
 }
 
 // --- Projects ----------------------------------------------------------
@@ -448,6 +498,7 @@ function setupRenderToggle() {
 async function init() {
   await refreshHealth();
   await loadTools();
+  await loadSymbols();
   await loadProjects();
   await syncPreviewFromServer();
   setupChat();
@@ -455,6 +506,7 @@ async function init() {
   setupValidator();
   setupSaveAndClear();
   setupExportButtons();
+  setupSymbols();
   setupProjects();
   setupRenderToggle();
 }

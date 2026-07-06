@@ -29,6 +29,7 @@ def test_registry_has_expected_tools():
         "get_current_drawing", "clear_current_drawing", "render_current_drawing",
         "export_script", "export_lisp",
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
+        "list_symbols", "insert_symbol",
     }
 
 
@@ -239,3 +240,44 @@ def test_load_unknown_project_fails_cleanly(ctx):
 def test_get_project_rejects_unsafe_id(ctx):
     result = TOOLS_BY_NAME["get_project"].handler({"project_id": "../../etc/passwd"}, ctx)
     assert result["success"] is False
+
+
+def test_list_symbols_tool(ctx):
+    result = TOOLS_BY_NAME["list_symbols"].handler({}, ctx)
+    assert result["success"] is True
+    names = {s["name"] for s in result["symbols"]}
+    assert "gate_valve" in names
+    assert all("discipline" in s and "description" in s for s in result["symbols"])
+
+
+def test_insert_symbol_tool_draws_multiple_entities(ctx):
+    result = TOOLS_BY_NAME["insert_symbol"].handler(
+        {"symbol_name": "capacitor", "position": [5, 5]}, ctx
+    )
+    assert result["success"] is True
+    assert len(result["results"]) == 4  # capacitor is 4 entities
+    assert len(ctx.history) == 4
+
+
+def test_insert_symbol_applies_layer_and_color(ctx):
+    result = TOOLS_BY_NAME["insert_symbol"].handler(
+        {"symbol_name": "resistor", "position": [0, 0], "layer": "schematic", "color": "red"}, ctx
+    )
+    assert result["success"] is True
+    entity = result["results"][0]["entity"]
+    assert entity["layer"] == "schematic"
+    assert entity["color"] == 1
+
+
+def test_insert_symbol_unknown_name_fails_cleanly(ctx):
+    result = TOOLS_BY_NAME["insert_symbol"].handler({"symbol_name": "not_real", "position": [0, 0]}, ctx)
+    assert result["success"] is False
+    assert "not_real" in result["message"]
+
+
+def test_insert_symbol_scale_and_rotation_are_applied(ctx):
+    result = TOOLS_BY_NAME["insert_symbol"].handler(
+        {"symbol_name": "pump", "position": [0, 0], "scale": 3.0}, ctx
+    )
+    circle = next(e["entity"] for e in result["results"] if e["entity_type"] == "circle")
+    assert circle["radius"] == pytest.approx(1.5)  # local radius 0.5 * scale 3
