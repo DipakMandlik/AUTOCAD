@@ -1,0 +1,17 @@
+# Core platform dependencies (headless, cross-platform)
+pydantic>=2.5
+pydantic-settings>=2.0
+mcp>=1.0.0
+ezdxf>=1.3
+
+# AutoCAD/GstarCAD/ZWCAD COM backend — Windows only.
+# (The original requirements.txt also pinned `typing>=3.7.4.3`, a defunct
+# backport of the stdlib `typing` module for Python <3.5; on any supported
+# Python version `typing` is already in the standard library, and pip would
+# either ignore or fail to satisfy that pin. Removed rather than carried
+# forward.)
+pywin32>=228; platform_system == "Windows"
+
+# Development/test tooling
+pytest>=7.4
+ruff>=0.4
