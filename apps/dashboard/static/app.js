@@ -81,6 +81,7 @@ function handleToolResult(result, logContainer, contextLabel) {
   const autofixed = result.autofixed || [];
   for (const w of warnings) logEntry(logContainer, true, `warning: ${w.code}`, w.message);
   for (const f of autofixed) logEntry(logContainer, true, `autofixed: ${f.code}`, f.message);
+  refreshLogs();
 }
 
 function setupChat() {
@@ -176,6 +177,7 @@ function setupSaveAndClear() {
     } catch (err) {
       logEntry(log, false, "save failed", err.message);
     }
+    refreshLogs();
   });
   document.getElementById("clear-preview").addEventListener("click", async () => {
     try {
@@ -186,6 +188,7 @@ function setupSaveAndClear() {
     } catch (err) {
       logEntry(log, false, "clear failed", err.message);
     }
+    refreshLogs();
   });
 }
 
@@ -206,8 +209,10 @@ function setupExportButtons() {
       logEntry(log, true, `export .${queryFormat === "lisp" ? "lsp" : queryFormat}`, result.warning || "ready");
     } catch (err) {
       logEntry(log, false, "export failed", err.message);
+      refreshLogs();
       return;
     }
+    refreshLogs();
     window.location.href = `/drawings/current/export?format=${queryFormat}`;
   }
 
@@ -255,6 +260,37 @@ function setupSymbols() {
     } catch (err) {
       logEntry(log, false, "insert failed", err.message);
     }
+  });
+}
+
+// --- Execution log ---------------------------------------------------
+
+function renderLogEntries(entries) {
+  const container = document.getElementById("execution-log");
+  container.innerHTML = "";
+  for (const entry of [...entries].reverse()) {
+    const el = document.createElement("div");
+    el.className = `entry ${entry.success ? "success" : "failure"}`;
+    el.innerHTML = `<div>${entry.tool} (${entry.duration_ms}ms)</div>
+      <div class="meta">${entry.timestamp} — ${entry.message || ""}</div>`;
+    container.appendChild(el);
+  }
+}
+
+async function refreshLogs() {
+  try {
+    const result = await api("/logs?limit=100");
+    renderLogEntries(result.entries);
+  } catch {
+    // logs are diagnostic, not on the critical path — fail silently
+  }
+}
+
+function setupLogs() {
+  document.getElementById("logs-refresh").addEventListener("click", refreshLogs);
+  document.getElementById("logs-clear").addEventListener("click", async () => {
+    await api("/logs/clear", { method: "POST" });
+    await refreshLogs();
   });
 }
 
@@ -335,6 +371,7 @@ function setupProjects() {
     } catch (err) {
       logEntry(log, false, "request failed", err.message);
     }
+    refreshLogs();
   });
 
   document.getElementById("project-list").addEventListener("click", async (event) => {
@@ -358,6 +395,7 @@ function setupProjects() {
     } catch (err) {
       logEntry(log, false, "request failed", err.message);
     }
+    refreshLogs();
   });
 }
 
@@ -537,6 +575,8 @@ async function init() {
   setupSvgImport();
   setupProjects();
   setupRenderToggle();
+  setupLogs();
+  await refreshLogs();
 }
 
 init();

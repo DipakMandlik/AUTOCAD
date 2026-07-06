@@ -318,3 +318,26 @@ def test_import_svg_via_rest_rejects_bad_xml(client):
     response = client.post("/tools/import_svg", json={"svg_content": "<svg><line x1=0/></svg>"})
     assert response.status_code == 200
     assert response.json()["success"] is False
+
+
+def test_get_logs_via_rest(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    response = client.get("/logs")
+    assert response.status_code == 200
+    tools_called = [e["tool"] for e in response.json()["entries"]]
+    assert "draw_circle" in tools_called
+
+
+def test_get_logs_respects_limit_query_param(client):
+    for _ in range(3):
+        client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 1})
+    response = client.get("/logs?limit=1")
+    assert response.status_code == 200
+    assert len(response.json()["entries"]) == 1
+
+
+def test_clear_logs_via_rest(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    response = client.post("/logs/clear")
+    assert response.status_code == 200
+    assert response.json()["success"] is True

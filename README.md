@@ -56,7 +56,7 @@ pip install -e ".[render-png]"   # adds matplotlib for PNG rendering (SVG needs 
 ## Run the tests
 
 ```bash
-pytest -v      # 213 tests, all run headlessly against the DXF backend
+pytest -v      # 227 tests, all run headlessly against the DXF backend
 ruff check .
 ```
 
@@ -89,8 +89,8 @@ uvicorn apps.api.main:app --reload
 Then open `http://localhost:8000/dashboard/` for the web UI (AI chat, a
 tool explorer with live schemas, an SVG drawing preview with an
 accurate-render toggle, .scr/.lsp download buttons, a validate-only
-dry-run panel, and a Projects panel for saving/loading drawings), or use
-the API directly:
+dry-run panel, a Projects panel for saving/loading drawings, and a Logs
+panel showing every tool call this session), or use the API directly:
 
 - `GET /health` — status + which backend is active
 - `GET /tools` — list every tool's name/description/JSON schema
@@ -107,6 +107,8 @@ the API directly:
 - `GET /projects/{id}/export?format=scr|lisp` — same, for a saved project
 - `GET /symbols` — list the built-in symbol library (name/discipline/description)
 - `GET /symbols/{name}/preview?format=svg|png` — render a symbol in isolation, for the dashboard's symbol grid
+- `GET /logs?limit=N` — recent tool calls (successful or not), most-recent-last
+- `POST /logs/clear` — clear the execution log
 
 ```bash
 curl -X POST localhost:8000/tools/draw_circle -H 'content-type: application/json' \
@@ -155,7 +157,16 @@ Configure via an optional `config.json` in the working directory, or
 `get_current_drawing`, `clear_current_drawing`, `render_current_drawing`,
 `export_script`, `export_lisp`, `create_project`, `list_projects`,
 `get_project`, `snapshot_project`, `load_project`, `list_symbols`,
-`insert_symbol`, `import_svg`.
+`insert_symbol`, `import_svg`, `get_execution_log`, `clear_execution_log`.
+
+Every one of these is recorded in the execution log the moment it
+returns (tool name, success/failure, message, duration) — including
+`get_execution_log` itself. This happens via a single wrapper applied
+once to every entry in the tool registry (see `docs/architecture.md`
+Phase 12), so it covers both transports and every REST "sugar" route
+automatically. One real gap: tools contributed by a plugin (see
+"Plugins" above) are registered *after* that wrapping runs, so plugin
+tool calls are not currently logged.
 
 `import_svg` accepts a raw SVG document and converts a constrained element
 subset (`line`/`circle`/`ellipse`/`rect`/`polyline`/`polygon`/`text`, and
@@ -198,6 +209,7 @@ Briefly:
 - `examples/plugins/` — a complete, runnable example plugin
 - `symbols/` — the built-in engineering symbol library (electrical/piping/architectural), `insert_symbol`/`list_symbols` tools sit on top
 - `imports/` — `svg_import.py`, a constrained SVG-to-`DrawingPlan` parser; the `import_svg` tool sits on top
+- `apps/execution_log.py` — bounded, in-memory tool-call audit trail backing the dashboard's Logs panel and `get_execution_log`/`clear_execution_log`
 - `apps/context.py` — shared `ServerContext` wiring used by every app below
 - `apps/server/` — the MCP stdio server and its tool registry
 - `apps/api/` — the REST API (same tool registry, second transport)
@@ -215,7 +227,10 @@ this pass attempted.
 
 Per the master platform vision, not built yet (see `docs/architecture.md`
 for why): dashboard sections that need richer UI/backend support
-(Templates, Execution Queue, Logs, Performance, Settings); multi-format
+(Templates, Execution Queue, Performance, Settings — Logs now exists,
+see "Available tools"/"REST" above, though it's a flat recent-calls list
+rather than a queryable/filterable one, and doesn't yet cover
+plugin-contributed tool calls); multi-format
 import beyond SVG (PDF/image/sketch/Excel — these need OCR/ML or
 heavyweight parsing this sandbox can't install or verify; `import_svg`,
 see "Available tools" above, covers plain, unstyled, ungrouped SVG only —

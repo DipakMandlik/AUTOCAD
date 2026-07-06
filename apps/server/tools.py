@@ -11,6 +11,7 @@ same plan -> validate -> (autofix) -> execute pipeline.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -398,6 +399,30 @@ def _handle_import_svg(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[st
     }
 
 
+def _handle_get_execution_log(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    limit = arguments.get("limit", 100)
+    entries = ctx.execution_log.recent(limit)
+    return {
+        "success": True,
+        "entries": [
+            {
+                "seq": e.seq,
+                "tool": e.tool,
+                "success": e.success,
+                "message": e.message,
+                "duration_ms": round(e.duration_ms, 2),
+                "timestamp": e.timestamp,
+            }
+            for e in entries
+        ],
+    }
+
+
+def _handle_clear_execution_log(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    count = ctx.execution_log.clear()
+    return {"success": True, "message": f"cleared {count} log entr{'y' if count == 1 else 'ies'}"}
+
+
 @dataclass
 class ToolSpec:
     name: str
@@ -716,6 +741,49 @@ TOOL_REGISTRY: List[ToolSpec] = [
         },
         _handle_import_svg,
     ),
+    ToolSpec(
+        "get_execution_log",
+        "List recent tool calls (successful or not), with timing — for observability, not undo",
+        {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "max entries to return (optional, default 100)"},
+            },
+        },
+        _handle_get_execution_log,
+    ),
+    ToolSpec(
+        "clear_execution_log",
+        "Clear the tool-call execution log",
+        {"type": "object", "properties": {}},
+        _handle_clear_execution_log,
+    ),
 ]
 
 TOOLS_BY_NAME: Dict[str, ToolSpec] = {tool.name: tool for tool in TOOL_REGISTRY}
+
+
+def _with_execution_logging(name: str, handler: Callable[[Dict[str, Any], ServerContext], Dict[str, Any]]):
+    """Wrap a tool handler so every call — from either transport — is
+    recorded in `ctx.execution_log`, without either transport (MCP's
+    `server.py` or the REST API's generic `/tools/{name}`) needing to know
+    logging exists. Applied once, below, to every entry in TOOL_REGISTRY."""
+
+    def wrapped(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+        started = time.monotonic()
+        result = handler(arguments, ctx)
+        duration_ms = (time.monotonic() - started) * 1000
+        ctx.execution_log.record(
+            tool=name,
+            success=bool(result.get("success", True)),
+            message=result.get("message"),
+            duration_ms=duration_ms,
+        )
+        return result
+
+    return wrapped
+
+
+for _tool in TOOL_REGISTRY:
+    _tool.handler = _with_execution_logging(_tool.name, _tool.handler)
+del _tool

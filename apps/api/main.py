@@ -193,6 +193,14 @@ def create_app(ctx: ServerContext) -> FastAPI:
         plan = DrawingPlan(operations=definition.build((0.0, 0.0, 0.0), scale, rotation))
         return _render_response(plan, image_format)
 
+    @app.get("/logs")
+    def get_logs(limit: int = Query(100, gt=0, le=500)) -> Dict[str, Any]:
+        return TOOLS_BY_NAME["get_execution_log"].handler({"limit": limit}, ctx)
+
+    @app.post("/logs/clear")
+    def clear_logs() -> Dict[str, Any]:
+        return TOOLS_BY_NAME["clear_execution_log"].handler({}, ctx)
+
     if DASHBOARD_STATIC_DIR.is_dir():
         app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")
 

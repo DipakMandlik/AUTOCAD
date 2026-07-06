@@ -497,6 +497,57 @@ to build now; the rest stays on the deferred list.
   the rect and circle into the preview at the correct flipped positions
   and logged the curved path as skipped.
 
+## Phase 12: Execution log (dashboard "Logs" section)
+
+The master vision's dashboard has a dedicated Logs section; this phase
+builds the real thing behind it rather than a placeholder, using the same
+"single cross-cutting concern, applied once" approach Phase 9's plugin
+loading and Phase 7's render toggle already established.
+
+- **`apps/execution_log.py`**: `ExecutionLog` is a `deque(maxlen=500)`-backed
+  ring buffer of `ExecutionLogEntry` (seq, tool, success, message,
+  duration_ms, timestamp). Process-lifetime only, like `ServerContext
+  .history` — no persistence, no cross-restart durability, and bounded so
+  a long session can't grow it without limit.
+- **How every call gets recorded without either transport knowing**: both
+  `apps/server/server.py` (MCP) and `apps/api/main.py` (REST, including
+  every "sugar" route like `GET /symbols` that calls a tool handler
+  directly rather than through the generic `POST /tools/{name}`) invoke
+  `ToolSpec.handler` the same way — by reference, off `TOOLS_BY_NAME`/
+  `TOOL_REGISTRY`. So `apps/server/tools.py` wraps every handler exactly
+  once, at module import time, with `_with_execution_logging`, timing the
+  call and recording `result["success"]`/`result["message"]` afterward.
+  Neither transport module changed at all; this is the same trick that
+  made `run_pipeline` a single source of truth, applied one layer up.
+- **`get_execution_log`/`clear_execution_log` tools + `GET /logs`,
+  `POST /logs/clear`**: `get_execution_log` itself is logged too (it's a
+  tool call like any other) — a real audit trail records reads of itself,
+  which is correct behavior, not a bug, and is covered by a test.
+- **Dashboard "Logs" panel**: lists recent entries (tool, duration,
+  timestamp, message), color-coded success/failure via the same
+  `.entry.success`/`.entry.failure` classes the other panels already use.
+  `handleToolResult()` (the function every chat/tool-caller/symbol/SVG-
+  import action already funnels through) now also calls `refreshLogs()`,
+  so the panel updates live after most actions with no per-panel wiring;
+  the three action paths that don't go through `handleToolResult` (save/
+  clear-drawing, export, and the Projects panel) each got one explicit
+  `refreshLogs()` call added alongside their existing logging. Verified
+  live with Playwright: a successful `process_command` and a deliberately
+  invalid `draw_circle` (negative radius) both showed up correctly
+  color-coded with their real messages, and Clear emptied the panel.
+
+**Scope boundary, stated plainly**: the import-time wrapping only covers
+tools present in `TOOL_REGISTRY` at the moment `apps/server/tools.py`
+finishes loading. Plugin-contributed tools (Phase 9) are appended to that
+same list later, inside `build_context()`, well after this module has
+already finished wrapping — so a plugin's own tool calls are *not*
+recorded in the execution log. Fixing this generally (e.g. a wrap-hook
+plumbed through `plugins/loader.py`) was judged not worth the added
+indirection for a gap this narrow; it's noted here in the same spirit as
+the other two documented plugin-loading-order caveats (Phase 9's
+`ValidationEngine` rule-snapshot timing, and plugin backends not being
+selectable as the default session backend).
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -504,7 +555,8 @@ placeholder directories were created for them (an empty `dashboard`
 section folder communicates nothing and just adds noise):
 
 - Dashboard sections that need richer UI/backend support: Templates,
-  Execution Queue, Logs, Performance, Settings
+  Execution Queue, Performance, Settings (Logs now exists — Phase 12 —
+  though it's a flat recent-calls list, not a queryable/filterable one)
 - Multi-format import beyond SVG: PDF, raster image, hand sketch,
   Excel/CSV, flowcharts — these need OCR/ML or heavyweight parsing this
   sandbox can't install or verify (Phase 11 covers plain, unstyled,

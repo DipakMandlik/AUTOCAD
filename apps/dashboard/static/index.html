@@ -72,6 +72,16 @@
       </div>
 
       <div class="panel">
+        <h2>Logs</h2>
+        <p class="hint">Every tool call this session, successful or not — for observability, not undo.</p>
+        <div class="log-controls">
+          <button id="logs-refresh" class="secondary">Refresh</button>
+          <button id="logs-clear" class="secondary">Clear</button>
+        </div>
+        <div class="log" id="execution-log"></div>
+      </div>
+
+      <div class="panel">
         <h2>Validate a plan</h2>
         <p class="hint">Paste a list of operations; nothing is executed.</p>
         <textarea id="validate-input" rows="4" spellcheck="false">[

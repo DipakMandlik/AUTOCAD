@@ -30,6 +30,7 @@ def test_registry_has_expected_tools():
         "export_script", "export_lisp",
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
         "list_symbols", "insert_symbol", "import_svg",
+        "get_execution_log", "clear_execution_log",
     }
 
 
@@ -328,3 +329,50 @@ def test_import_svg_tool_invalid_svg_fails_cleanly(ctx):
     result = TOOLS_BY_NAME["import_svg"].handler({"svg_content": "<svg><line x1=0/></svg>"}, ctx)
     assert result["success"] is False
     assert "invalid SVG" in result["message"]
+
+
+def test_every_tool_call_is_recorded_in_execution_log(ctx):
+    TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": 5}, ctx)
+    entries = ctx.execution_log.recent()
+    assert len(entries) == 1
+    assert entries[0].tool == "draw_circle"
+    assert entries[0].success is True
+    assert entries[0].message == "drawn"
+    assert entries[0].duration_ms >= 0
+
+
+def test_execution_log_records_failures_too(ctx):
+    TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": -5}, ctx)
+    entries = ctx.execution_log.recent()
+    assert entries[-1].tool == "draw_circle"
+    assert entries[-1].success is False
+
+
+def test_get_execution_log_tool(ctx):
+    TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": 5}, ctx)
+    TOOLS_BY_NAME["get_execution_log"].handler({}, ctx)
+    # a call is recorded only after its handler returns, so the first
+    # get_execution_log call only shows up in a *second* call's results
+    result = TOOLS_BY_NAME["get_execution_log"].handler({}, ctx)
+    assert result["success"] is True
+    tools_called = [e["tool"] for e in result["entries"]]
+    assert "draw_circle" in tools_called
+    assert "get_execution_log" in tools_called
+
+
+def test_get_execution_log_respects_limit(ctx):
+    for _ in range(5):
+        TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": 1}, ctx)
+    result = TOOLS_BY_NAME["get_execution_log"].handler({"limit": 2}, ctx)
+    assert len(result["entries"]) == 2
+
+
+def test_clear_execution_log_tool(ctx):
+    TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": 5}, ctx)
+    result = TOOLS_BY_NAME["clear_execution_log"].handler({}, ctx)
+    assert result["success"] is True
+    assert "cleared" in result["message"]
+    # only the clear call itself remains, logged after clearing ran
+    remaining = ctx.execution_log.recent()
+    assert len(remaining) == 1
+    assert remaining[0].tool == "clear_execution_log"

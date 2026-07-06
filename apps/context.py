@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import List
 
+from apps.execution_log import ExecutionLog
 from cad.backend import CADBackend
 from cad.registry import get_backend
 from config import Settings
@@ -32,6 +33,10 @@ class ServerContext:
     # substitute for a real multi-document/multi-tenant model: there is
     # still exactly one backend document for the process's lifetime.
     history: List[Entity] = field(default_factory=list)
+    # Every tool call, successful or not — the dashboard's "Logs" section
+    # reads from this. Bounded and process-lifetime only; see
+    # apps/execution_log.py.
+    execution_log: ExecutionLog = field(default_factory=ExecutionLog)
 
 
 def build_context(settings: Settings) -> ServerContext:

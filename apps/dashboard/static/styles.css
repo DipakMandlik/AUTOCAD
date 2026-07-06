@@ -128,6 +128,9 @@ button:hover { background: var(--accent-strong); }
 
 button.secondary { background: transparent; border: 1px solid var(--border); color: var(--text); }
 
+.log-controls { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+.log-controls button { flex: 1; }
+
 .symbol-controls { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
 .symbol-controls input { flex: 1; min-width: 0; }
 
