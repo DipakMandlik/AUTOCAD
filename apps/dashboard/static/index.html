@@ -63,14 +63,16 @@
           <div class="preview-actions">
             <input id="save-path" type="text" placeholder="output filename, e.g. demo.dxf" />
             <button id="save-call">Save</button>
+            <button id="render-toggle" class="secondary">Show accurate render</button>
             <button id="clear-preview">Clear</button>
           </div>
         </div>
-        <p class="hint">
+        <p class="hint" id="preview-hint">
           Rendered client-side from what has actually been drawn this session —
           not a full CAD-accurate renderer, just enough to see the plan take shape.
         </p>
         <svg id="canvas" viewBox="-50 -50 100 100" preserveAspectRatio="xMidYMid meet"></svg>
+        <img id="rendered-img" alt="Accurate SVG render of the current drawing" />
         <div class="log" id="preview-log"></div>
       </div>
     </section>

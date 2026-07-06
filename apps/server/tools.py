@@ -20,6 +20,7 @@ from engine.geometry.primitives import DrawingPlan
 from engine.planner.planner import NonGeometryIntent, PlanningError
 from engine.validator.engine import ValidationReport
 from engine.validator.issue import Issue
+from export.renderer import render_svg
 from nlp.fallback import FallbackParser
 from storage.store import ProjectNotFoundError
 
@@ -187,6 +188,15 @@ def _handle_clear_current_drawing(arguments: Dict[str, Any], ctx: ServerContext)
     count = len(ctx.history)
     ctx.history.clear()
     return {"success": True, "message": f"cleared {count} entit{'y' if count == 1 else 'ies'} from history"}
+
+
+def _handle_render_current_drawing(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
+    plan = DrawingPlan(operations=list(ctx.history))
+    try:
+        svg = render_svg(plan)
+    except Exception as exc:  # noqa: BLE001 - rendering can fail in many ezdxf/Pillow-specific ways
+        return {"success": False, "message": f"render failed: {exc}"}
+    return {"success": True, "format": "svg", "svg": svg}
 
 
 def _handle_create_project(arguments: Dict[str, Any], ctx: ServerContext) -> Dict[str, Any]:
@@ -493,6 +503,12 @@ TOOL_REGISTRY: List[ToolSpec] = [
         "Clear the session's drawing history (does not undo anything already sent to the backend)",
         {"type": "object", "properties": {}},
         _handle_clear_current_drawing,
+    ),
+    ToolSpec(
+        "render_current_drawing",
+        "Render the current drawing history to a real, CAD-accurate SVG image",
+        {"type": "object", "properties": {}},
+        _handle_render_current_drawing,
     ),
     ToolSpec(
         "create_project",

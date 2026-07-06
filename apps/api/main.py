@@ -14,15 +14,27 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from apps.context import ServerContext, build_context
 from apps.server.tools import TOOL_REGISTRY, TOOLS_BY_NAME, issue_to_dict, result_entries, run_pipeline
 from config import Settings
 from engine.geometry.primitives import DrawingPlan
+from export.renderer import render_png, render_svg
+from storage.store import ProjectNotFoundError
 
 DASHBOARD_STATIC_DIR = Path(__file__).resolve().parent.parent / "dashboard" / "static"
+
+
+def _render_response(plan: DrawingPlan, image_format: str) -> Response:
+    if image_format == "svg":
+        return Response(content=render_svg(plan), media_type="image/svg+xml")
+    try:
+        return Response(content=render_png(plan), media_type="image/png")
+    except RuntimeError as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
 
 
 def create_app(ctx: ServerContext) -> FastAPI:
@@ -83,6 +95,15 @@ def create_app(ctx: ServerContext) -> FastAPI:
     def clear_drawing() -> Dict[str, Any]:
         return TOOLS_BY_NAME["clear_current_drawing"].handler({}, ctx)
 
+    @app.get("/drawings/current/render")
+    def render_current_drawing(
+        image_format: str = Query("svg", alias="format", pattern="^(svg|png)$"),
+    ) -> Response:
+        """A real, CAD-accurate render (via ezdxf), unlike the dashboard's
+        coarse hand-rolled SVG preview."""
+        plan = DrawingPlan(operations=list(ctx.history))
+        return _render_response(plan, image_format)
+
     @app.get("/projects")
     def list_projects() -> Dict[str, Any]:
         return TOOLS_BY_NAME["list_projects"].handler({}, ctx)
@@ -108,6 +129,18 @@ def create_app(ctx: ServerContext) -> FastAPI:
     @app.post("/projects/{project_id}/load")
     def load_project(project_id: str) -> Dict[str, Any]:
         return TOOLS_BY_NAME["load_project"].handler({"project_id": project_id}, ctx)
+
+    @app.get("/projects/{project_id}/render")
+    def render_project(
+        project_id: str, image_format: str = Query("svg", alias="format", pattern="^(svg|png)$")
+    ) -> Response:
+        try:
+            project = ctx.project_store.get(project_id)
+        except ProjectNotFoundError:
+            raise HTTPException(status_code=404, detail=f"project '{project_id}' not found") from None
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return _render_response(project.plan, image_format)
 
     if DASHBOARD_STATIC_DIR.is_dir():
         app.mount("/dashboard", StaticFiles(directory=DASHBOARD_STATIC_DIR, html=True), name="dashboard")

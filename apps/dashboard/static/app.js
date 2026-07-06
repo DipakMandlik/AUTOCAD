@@ -65,7 +65,7 @@ function showSchema() {
 function handleToolResult(result, logContainer, contextLabel) {
   if (result.entity) state.entities.push(result.entity);
   if (result.success) {
-    renderPreview();
+    refreshPreview();
     logEntry(logContainer, true, contextLabel, result.message || "ok");
   } else {
     logEntry(logContainer, false, contextLabel, result.message || "failed");
@@ -174,7 +174,7 @@ function setupSaveAndClear() {
     try {
       const result = await api("/drawings/clear", { method: "POST" });
       state.entities = [];
-      renderPreview();
+      refreshPreview();
       logEntry(log, true, "drawing history cleared", result.message);
     } catch (err) {
       logEntry(log, false, "clear failed", err.message);
@@ -187,7 +187,7 @@ function setupSaveAndClear() {
 async function syncPreviewFromServer() {
   const current = await api("/drawings/current");
   state.entities = current.operations || [];
-  renderPreview();
+  refreshPreview();
 }
 
 async function loadProjects() {
@@ -374,6 +374,51 @@ function renderPreview() {
   }
 }
 
+// --- Accurate render toggle ---------------------------------------------
+// Two ways to see the drawing: the coarse hand-rolled SVG above (instant,
+// client-side, approximate) or a real ezdxf render fetched from the
+// server (accurate, one HTTP round trip). refreshPreview() keeps whichever
+// is currently selected up to date; every draw/clear/load path calls it
+// instead of renderPreview() directly.
+
+let accurateRenderMode = false;
+
+function refreshPreview() {
+  if (accurateRenderMode) {
+    // cache-bust: the browser must not reuse a stale render after a new draw
+    document.getElementById("rendered-img").src = `/drawings/current/render?format=svg&t=${Date.now()}`;
+  } else {
+    renderPreview();
+  }
+}
+
+function setupRenderToggle() {
+  const toggle = document.getElementById("render-toggle");
+  const canvas = document.getElementById("canvas");
+  const img = document.getElementById("rendered-img");
+  const hint = document.getElementById("preview-hint");
+
+  // Visibility is managed entirely via inline style.display, deliberately
+  // not the `hidden` attribute: canvas is an SVGElement, whose `.hidden`
+  // IDL property does not reliably reflect to the content attribute the
+  // way HTMLElement's does, and clearing an inline style (style.display =
+  // "") does not override a UA-stylesheet `[hidden] { display: none }`
+  // rule that's still matching. Inline display always wins either way.
+  img.style.display = "none";
+
+  toggle.addEventListener("click", () => {
+    accurateRenderMode = !accurateRenderMode;
+    canvas.style.display = accurateRenderMode ? "none" : "";
+    img.style.display = accurateRenderMode ? "" : "none";
+    toggle.textContent = accurateRenderMode ? "Show coarse preview" : "Show accurate render";
+    hint.textContent = accurateRenderMode
+      ? "A real, CAD-accurate SVG rendered server-side (ezdxf), fetched fresh on every change."
+      : "Rendered client-side from what has actually been drawn this session — "
+        + "not a full CAD-accurate renderer, just enough to see the plan take shape.";
+    refreshPreview();
+  });
+}
+
 async function init() {
   await refreshHealth();
   await loadTools();
@@ -384,6 +429,7 @@ async function init() {
   setupValidator();
   setupSaveAndClear();
   setupProjects();
+  setupRenderToggle();
 }
 
 init();

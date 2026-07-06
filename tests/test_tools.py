@@ -26,7 +26,7 @@ def test_registry_has_expected_tools():
         "draw_line", "draw_circle", "draw_arc", "draw_ellipse", "draw_polyline",
         "draw_rectangle", "draw_text", "draw_hatch", "add_dimension",
         "save_drawing", "create_layer", "process_command",
-        "get_current_drawing", "clear_current_drawing",
+        "get_current_drawing", "clear_current_drawing", "render_current_drawing",
         "create_project", "list_projects", "get_project", "snapshot_project", "load_project",
     }
 
@@ -131,6 +131,20 @@ def test_get_and_clear_current_drawing(ctx):
     cleared = TOOLS_BY_NAME["clear_current_drawing"].handler({}, ctx)
     assert cleared["success"] is True
     assert ctx.history == []
+
+
+def test_render_current_drawing_returns_svg(ctx):
+    TOOLS_BY_NAME["draw_circle"].handler({"center": [0, 0], "radius": 5}, ctx)
+    result = TOOLS_BY_NAME["render_current_drawing"].handler({}, ctx)
+    assert result["success"] is True
+    assert result["format"] == "svg"
+    assert "<svg" in result["svg"]
+
+
+def test_render_current_drawing_handles_empty_history(ctx):
+    result = TOOLS_BY_NAME["render_current_drawing"].handler({}, ctx)
+    assert result["success"] is True
+    assert "<svg" in result["svg"]
 
 
 def test_create_project_snapshots_current_history(ctx):

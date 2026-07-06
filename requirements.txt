@@ -5,6 +5,7 @@ mcp>=1.0.0
 ezdxf>=1.3
 fastapi>=0.110
 uvicorn>=0.27
+Pillow>=10.0
 
 # AutoCAD/GstarCAD/ZWCAD COM backend — Windows only.
 # (The original requirements.txt also pinned `typing>=3.7.4.3`, a defunct
@@ -13,6 +14,10 @@ uvicorn>=0.27
 # either ignore or fail to satisfy that pin. Removed rather than carried
 # forward.)
 pywin32>=228; platform_system == "Windows"
+
+# Optional: PNG rendering (export.renderer.render_png). SVG rendering
+# works without it.
+matplotlib>=3.7
 
 # Development/test tooling
 pytest>=7.4

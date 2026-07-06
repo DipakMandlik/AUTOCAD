@@ -183,3 +183,43 @@ def test_load_unknown_project_returns_200_with_failure(client):
     response = client.post("/projects/does-not-exist/load")
     assert response.status_code == 200
     assert response.json()["success"] is False
+
+
+def test_render_current_drawing_svg(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    response = client.get("/drawings/current/render")  # default format=svg
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+    assert "<svg" in response.text
+
+
+def test_render_current_drawing_png(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    response = client.get("/drawings/current/render?format=png")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_render_rejects_unknown_format(client):
+    response = client.get("/drawings/current/render?format=bogus")
+    assert response.status_code == 422
+
+
+def test_render_empty_drawing_does_not_error(client):
+    response = client.get("/drawings/current/render")
+    assert response.status_code == 200
+    assert "<svg" in response.text
+
+
+def test_render_project(client):
+    client.post("/tools/draw_circle", json={"center": [0, 0], "radius": 5})
+    created = client.post("/projects", json={"name": "demo"}).json()
+    response = client.get(f"/projects/{created['project_id']}/render")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/svg+xml"
+
+
+def test_render_unknown_project_returns_404(client):
+    response = client.get("/projects/does-not-exist/render")
+    assert response.status_code == 404

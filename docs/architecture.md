@@ -248,6 +248,50 @@ Multiple concurrent documents/projects would need the backend layer itself
 to become multi-document-aware, which is a real architectural change, not
 a small addition — deliberately not attempted here.
 
+## Phase 7: Export engine (SVG/PNG rendering)
+
+DXF was the only output format through Phase 6 — good for round-tripping
+into real CAD software, useless for "show me the drawing" without opening
+one. This phase adds real, CAD-accurate rendering:
+
+- **`export/renderer.py`** — `render_svg(plan)` and `render_png(plan)`.
+  Both build their own throwaway in-memory ezdxf document via `DXFBackend`
+  and hand it to `ezdxf.addons.drawing` — a rendering concern layered on
+  top of the DXF backend's entity-drawing logic, not a new execution path,
+  and not tied to whatever `CADBackend` is actually configured for
+  execution (rendering a plan works identically whether the live backend
+  is `dxf` or `autocad`).
+- SVG uses ezdxf's native SVG backend, whose only dependency is Pillow —
+  now a required dependency, since `ezdxf.addons.drawing` imports `PIL.Image`
+  unconditionally the moment it's imported at all. PNG additionally needs
+  matplotlib, which is an optional extra (`pip install -e ".[render-png]"`);
+  `render_png` raises a clear `RuntimeError` if it isn't installed, the
+  same guarded-import pattern as `autocad.backend`'s `pywin32` dependency.
+- **`render_current_drawing`** tool (SVG only — MCP tools return text
+  content, and SVG is text) and REST `GET /drawings/current/render` /
+  `GET /projects/{id}/render` (`?format=svg|png`, actual `image/svg+xml`
+  or `image/png` responses, not JSON-wrapped).
+- Dashboard: a toggle between the coarse hand-rolled preview and the real
+  server-rendered SVG (`<img src="/drawings/current/render?format=svg">`,
+  cache-busted on every refresh).
+
+Two real bugs surfaced while building this, both from testing edge cases
+rather than just the happy path:
+
+- Rendering an **empty** plan crashed with `ValueError: empty bounding
+  box` — ezdxf's `Page(0, 0)` auto-fit mode needs content to fit to, and
+  even a fixed page size still needs *some* bounding box for content
+  placement. Fixed by supplying an explicit trivial `render_box` when
+  there's nothing to render, caught by a test for the empty-history case,
+  not the well-populated one every manual check had used.
+- The dashboard's render toggle initially left the coarse preview visible
+  underneath the accurate one — `<svg id="canvas">` is an `SVGElement`,
+  and setting `.hidden = true` on it in JavaScript does not reliably
+  reflect to the content attribute the way it does on `HTMLElement`
+  (confirmed by screenshot, not just code review). Fixed by managing
+  visibility entirely through inline `style.display` instead of the
+  `hidden` attribute/property on either element.
+
 ## What is still deferred (not stubbed)
 
 The following from the master vision are **not** built yet, and no
@@ -259,7 +303,8 @@ communicates nothing and just adds noise):
   Symbol Libraries, Execution Queue, Logs, Performance, Settings
 - Multi-format import (PDF, image, hand sketch, Excel/CSV, flowcharts)
 - Symbol libraries / ANSI-ISO-IEC standards knowledge base
-- DWG/SVG/PDF/LISP/SCR export (DXF is the one working export format for now)
+- DWG/LISP/SCR export (DXF, SVG, and PNG now work; PDF would follow the
+  same `export/renderer.py` pattern via a PDF-capable ezdxf drawing backend)
 - FreeCAD/Fusion/SolidWorks/Revit backends (the `CADBackend` interface is
   designed so these can be added later as new adapters)
 - True multi-document/multi-tenant project isolation (see the Phase 6 note above)
